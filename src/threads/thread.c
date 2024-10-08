@@ -219,7 +219,12 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
+  if (thread_current ()->base_priority < t->base_priority)
+    if (intr_context ())
+      intr_yield_on_return();
+    else
+      thread_yield();
+  
   return tid;
 }
 
