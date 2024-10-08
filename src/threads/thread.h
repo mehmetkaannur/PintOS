@@ -111,6 +111,10 @@ void thread_init (void);
 void thread_start (void);
 size_t threads_ready(void);
 
+bool compare_threads_by_priority (const struct list_elem *a_,
+                                  const struct list_elem *b_,
+                                  void *aux UNUSED);
+
 void thread_tick (void);
 void thread_print_stats (void);
 
