@@ -119,19 +119,14 @@ sema_up (struct semaphore *sema)
   if (is_waiter) 
     {
       t = list_entry (list_pop_front (&sema->waiters),
-                                     struct thread, elem);
+                                      struct thread, elem);
       thread_unblock (t);
     }
 
   sema->value++;
 
   if (is_waiter && thread_current ()->base_priority < t->base_priority)
-    {
-      if (intr_context ())
-        intr_yield_on_return();
-      else
-        thread_yield();
-    }
+    yield_asap (); 
 
   intr_set_level (old_level);
 }

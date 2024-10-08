@@ -71,6 +71,15 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+void
+yield_asap (void)
+{
+  if (intr_context ())
+    intr_yield_on_return ();
+  else
+    thread_yield ();
+}
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -219,11 +228,10 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+
+  /* If newly created thread has higher priority then yield */
   if (thread_current ()->base_priority < t->base_priority)
-    if (intr_context ())
-      intr_yield_on_return();
-    else
-      thread_yield();
+    yield_asap (); 
   
   return tid;
 }
@@ -380,7 +388,7 @@ thread_set_priority (int new_priority)
                                      struct thread, elem);
 
       if (new_priority < t->base_priority)
-        thread_yield ();
+        yield_asap ();
     } 
 }
 

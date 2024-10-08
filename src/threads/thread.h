@@ -107,6 +107,8 @@ struct thread
    Controlled by kernel command-line option "mlfqs". */
 extern bool thread_mlfqs;
 
+void yield_asap (void);
+
 void thread_init (void);
 void thread_start (void);
 size_t threads_ready(void);
