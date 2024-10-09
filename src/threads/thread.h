@@ -87,7 +87,7 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
+    int base_priority;                  /* Base priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
@@ -107,9 +107,15 @@ struct thread
    Controlled by kernel command-line option "mlfqs". */
 extern bool thread_mlfqs;
 
+void yield_asap (void);
+
 void thread_init (void);
 void thread_start (void);
 size_t threads_ready(void);
+
+bool compare_threads_by_priority (const struct list_elem *a_,
+                                  const struct list_elem *b_,
+                                  void *aux UNUSED);
 
 void thread_tick (void);
 void thread_print_stats (void);
