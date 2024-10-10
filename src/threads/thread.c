@@ -385,7 +385,7 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
-/* Returns false if first thread has lower effective priority than second */
+/* Returns true if first thread has higher effective priority than second */
 bool
 compare_threads_by_priority (const struct list_elem *a_,
                              const struct list_elem *b_,
@@ -394,7 +394,7 @@ compare_threads_by_priority (const struct list_elem *a_,
   struct thread *a = list_entry (a_, struct thread, elem);
   struct thread *b = list_entry (b_, struct thread, elem);
   
-  return thread_get_effective_priority(a) >= thread_get_effective_priority(b);
+  return thread_get_effective_priority(a) > thread_get_effective_priority(b);
 }
 
 /* Sets the current thread's base priority to NEW_PRIORITY. */
