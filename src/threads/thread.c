@@ -77,6 +77,38 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+static void donate (struct thread *t);
+static bool compare_priority (const struct list_elem *a_,
+                              const struct list_elem *b_,
+                              void *aux UNUSED);
+
+/* Returns true if first element has greater or equal priority to second */
+bool compare_priority (const struct list_elem *a_,
+                       const struct list_elem *b_,
+                       void *aux UNUSED)
+{
+  struct priority *a = list_entry (a_, struct priority, elem);
+  struct priority *b = list_entry (b_, struct priority, elem);
+  
+  return a->priority >= b->priority;
+}
+
+/* Donates the effective priority of current thread to thread t */
+void donate (struct thread *t)
+{
+  struct priority p;
+  p.priority = thread_get_priority ();
+  bool increased_priority = p.priority > thread_get_effective_priority (t);
+  list_insert_ordered (&t->donated_priorities, &p.elem, compare_priority, NULL);
+
+  /* Change donee thread position in ready_list if required */
+  if (increased_priority && t->status == THREAD_READY)
+    {
+      list_remove (&t->elem);
+      list_insert_ordered(&ready_list, &t->elem,
+                          compare_threads_by_priority, NULL);
+    }
+}
 
 /* Returns the effective priority of a given thread */
 int
