@@ -108,6 +108,16 @@ struct thread
    Controlled by kernel command-line option "mlfqs". */
 extern bool thread_mlfqs;
 
+/* List element for donated_priority list. */
+struct donated_priority
+  {
+    struct list_elem elem;     /* List element. */
+    struct lock *lock;         /* Lock which when released
+                                  causes donation to expire. */
+    int priority;              /* Value of donated priority. */
+  };
+
+void donate_priority (struct thread *t, struct lock *l);
 void yield_asap (void);
 
 void thread_init (void);

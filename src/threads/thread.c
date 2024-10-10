@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -45,13 +46,6 @@ struct kernel_thread_frame
     void *aux;                  /* Auxiliary data for function. */
   };
 
-/* List element for donated_priority list */
-struct priority
-  {
-    struct list_elem elem;
-    int priority;
-  };
-
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
@@ -77,7 +71,6 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-static void donate (struct thread *t);
 static bool compare_priority (const struct list_elem *a_,
                               const struct list_elem *b_,
                               void *aux UNUSED);
@@ -87,22 +80,24 @@ bool compare_priority (const struct list_elem *a_,
                        const struct list_elem *b_,
                        void *aux UNUSED)
 {
-  struct priority *a = list_entry (a_, struct priority, elem);
-  struct priority *b = list_entry (b_, struct priority, elem);
+  struct donated_priority *a = list_entry (a_, struct donated_priority, elem);
+  struct donated_priority *b = list_entry (b_, struct donated_priority, elem);
   
   return a->priority >= b->priority;
 }
 
-/* Donates the effective priority of current thread to thread t */
-void donate (struct thread *t)
+/* Donates the effective priority of current thread to thread t,
+   to be expired when lock l is released. */
+void donate_priority (struct thread *t, struct lock *l)
 {
-  struct priority *p = malloc (sizeof (struct priority));
+  struct donated_priority *p = malloc (sizeof (struct donated_priority));
   p->priority = thread_get_priority ();
+  p->lock = l;
   bool increased_priority = p->priority > thread_get_effective_priority (t);
   list_insert_ordered (&t->donated_priorities, 
                        &p->elem, compare_priority, NULL);
 
-  /* Change donee thread position in ready_list if required */
+  /* Change donee thread position in ready_list if required. */
   if (increased_priority && t->status == THREAD_READY)
     {
       list_remove (&t->elem);
@@ -111,14 +106,14 @@ void donate (struct thread *t)
     }
 }
 
-/* Returns the effective priority of a given thread */
+/* Returns the effective priority of a given thread. */
 int
 thread_get_effective_priority (struct thread *t)
 {
   int max_donated = 0;
   if (!list_empty (&t->donated_priorities))
     max_donated = list_entry (list_front (&t->donated_priorities),
-                              struct priority, elem)->priority;
+                              struct donated_priority, elem)->priority;
 
   return t->base_priority > max_donated ? t->base_priority : max_donated;
 }
@@ -650,7 +645,7 @@ thread_schedule_tail (struct thread *prev)
       struct list_elem *e = list_begin (&prev->donated_priorities);
       while (e != list_end (&prev->donated_priorities))
         {
-          struct priority *p = list_entry (e, struct priority, elem);
+          struct donated_priority *p = list_entry (e, struct donated_priority, elem);
           e = list_next (e);
           free (p);
         }
