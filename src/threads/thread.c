@@ -96,10 +96,11 @@ bool compare_priority (const struct list_elem *a_,
 /* Donates the effective priority of current thread to thread t */
 void donate (struct thread *t)
 {
-  struct priority p;
-  p.priority = thread_get_priority ();
-  bool increased_priority = p.priority > thread_get_effective_priority (t);
-  list_insert_ordered (&t->donated_priorities, &p.elem, compare_priority, NULL);
+  struct priority *p = malloc (sizeof (struct priority));
+  p->priority = thread_get_priority ();
+  bool increased_priority = p->priority > thread_get_effective_priority (t);
+  list_insert_ordered (&t->donated_priorities, 
+                       &p->elem, compare_priority, NULL);
 
   /* Change donee thread position in ready_list if required */
   if (increased_priority && t->status == THREAD_READY)
@@ -646,6 +647,13 @@ thread_schedule_tail (struct thread *prev)
   if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
     {
       ASSERT (prev != cur);
+      struct list_elem *e = list_begin (&prev->donated_priorities);
+      while (e != list_end (&prev->donated_priorities))
+        {
+          struct priority *p = list_entry (e, struct priority, elem);
+          e = list_next (e);
+          free (p);
+        }
       palloc_free_page (prev);
     }
 }
