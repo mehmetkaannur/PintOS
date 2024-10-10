@@ -118,7 +118,7 @@ struct donated_priority
   };
 
 void donate_priority (struct thread *t, struct lock *l);
-void yield_asap (void);
+void yield_if_lower_priority (void);
 
 void thread_init (void);
 void thread_start (void);

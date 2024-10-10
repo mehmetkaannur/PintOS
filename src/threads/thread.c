@@ -120,12 +120,21 @@ thread_get_effective_priority (struct thread *t)
 
 /* Yield the current thread as soon as possible. */
 void
-yield_asap (void)
+yield_if_lower_priority (void)
 {
-  if (intr_context ())
-    intr_yield_on_return ();
-  else
-    thread_yield ();
+  if (list_empty (&ready_list))
+    return;
+
+  struct thread *t = list_entry(list_front(&ready_list),
+                                struct thread, elem);
+
+  if (thread_get_priority() < thread_get_effective_priority(t))
+    {
+      if (intr_context ())
+        intr_yield_on_return ();
+      else
+        thread_yield ();
+    }
 }
 
 /* Initializes the threading system by transforming the code
@@ -277,9 +286,7 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
-  /* If newly created thread has higher effective priority then yield */
-  if (thread_get_priority () < thread_get_effective_priority(t))
-    yield_asap (); 
+  yield_if_lower_priority (); 
   
   return tid;
 }
@@ -431,14 +438,7 @@ thread_set_priority (int new_priority)
 {
   thread_current ()->base_priority = new_priority;
 
-  if (!list_empty (&ready_list))
-    {
-      struct thread *t = list_entry (list_front (&ready_list),
-                                     struct thread, elem);
-
-      if (thread_get_priority () < thread_get_effective_priority(t))
-        yield_asap ();
-    } 
+  yield_if_lower_priority ();
 }
 
 /* Returns the current thread's effective priority. */
