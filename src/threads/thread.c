@@ -45,6 +45,13 @@ struct kernel_thread_frame
     void *aux;                  /* Auxiliary data for function. */
   };
 
+/* List element for donated_priority list */
+struct priority
+  {
+    struct list_elem elem;
+    int priority;
+  };
+
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
@@ -71,6 +78,19 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+/* Returns the effective priority of a given thread */
+int
+thread_get_effective_priority (struct thread *t)
+{
+  int max_donated = 0;
+  if (!list_empty (&t->donated_priorities))
+    max_donated = list_entry (list_front (&t->donated_priorities),
+                              struct priority, elem)->priority;
+
+  return t->base_priority > max_donated ? t->base_priority : max_donated;
+}
+
+/* Yield the current thread as soon as possible. */
 void
 yield_asap (void)
 {
@@ -229,8 +249,8 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
-  /* If newly created thread has higher priority then yield */
-  if (thread_current ()->base_priority < t->base_priority)
+  /* If newly created thread has higher effective priority then yield */
+  if (thread_get_priority () < thread_get_effective_priority(t))
     yield_asap (); 
   
   return tid;
@@ -365,6 +385,7 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
+/* Returns false if first thread has lower effective priority than second */
 bool
 compare_threads_by_priority (const struct list_elem *a_,
                              const struct list_elem *b_,
@@ -373,10 +394,10 @@ compare_threads_by_priority (const struct list_elem *a_,
   struct thread *a = list_entry (a_, struct thread, elem);
   struct thread *b = list_entry (b_, struct thread, elem);
   
-  return a->base_priority >= b->base_priority;
+  return thread_get_effective_priority(a) >= thread_get_effective_priority(b);
 }
 
-/* Sets the current thread's priority to NEW_PRIORITY. */
+/* Sets the current thread's base priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
 {
@@ -387,16 +408,16 @@ thread_set_priority (int new_priority)
       struct thread *t = list_entry (list_front (&ready_list),
                                      struct thread, elem);
 
-      if (new_priority < t->base_priority)
+      if (thread_get_priority () < thread_get_effective_priority(t))
         yield_asap ();
     } 
 }
 
-/* Returns the current thread's priority. */
+/* Returns the current thread's effective priority. */
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->base_priority;
+  return thread_get_effective_priority(thread_current ());
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -517,6 +538,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->base_priority = priority;
   t->magic = THREAD_MAGIC;
+  list_init (&t->donated_priorities);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

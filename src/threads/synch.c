@@ -125,7 +125,7 @@ sema_up (struct semaphore *sema)
 
   sema->value++;
 
-  if (is_waiter && thread_current ()->base_priority < t->base_priority)
+  if (is_waiter && thread_get_priority () < thread_get_effective_priority (t))
     yield_asap (); 
 
   intr_set_level (old_level);
