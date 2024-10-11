@@ -89,6 +89,8 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int base_priority;                  /* Base priority. */
     struct list donated_priorities;     /* Donated priorities list. */
+    struct lock *waiting_for;           /* Pointer to lock thread
+                                           is waiting for. */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
@@ -117,7 +119,7 @@ struct donated_priority
     int priority;              /* Value of donated priority. */
   };
 
-void donate_priority (struct thread *t, struct lock *l);
+void donate_priority (struct thread *from, struct thread *to, struct lock *l);
 void yield_if_lower_priority (void);
 
 void thread_init (void);

@@ -88,21 +88,27 @@ bool compare_priority (const struct list_elem *a_,
 
 /* Donates the effective priority of current thread to thread t,
    to be expired when lock l is released. */
-void donate_priority (struct thread *t, struct lock *l)
+void
+donate_priority (struct thread *from, struct thread *to, struct lock *l)
 {
   struct donated_priority *p = malloc (sizeof (struct donated_priority));
-  p->priority = thread_get_priority ();
+  p->priority = thread_get_effective_priority (from);
   p->lock = l;
-  bool increased_priority = p->priority > thread_get_effective_priority (t);
-  list_insert_ordered (&t->donated_priorities, 
+  bool increased_priority = p->priority > thread_get_effective_priority (to);
+  list_insert_ordered (&to->donated_priorities, 
                        &p->elem, compare_priority, NULL);
 
   /* Change donee thread position in ready_list if required. */
-  if (increased_priority && t->status == THREAD_READY)
+  if (increased_priority)
     {
-      list_remove (&t->elem);
-      list_insert_ordered(&ready_list, &t->elem,
-                          compare_threads_by_priority, NULL);
+      if (to->status == THREAD_READY)
+        {
+          list_remove (&to->elem);
+          list_insert_ordered(&ready_list, &to->elem,
+                              compare_threads_by_priority, NULL);
+        }
+      else if (to->waiting_for != NULL)
+        donate_priority (to, to->waiting_for->holder, to->waiting_for);
     }
 }
 
