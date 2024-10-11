@@ -110,10 +110,9 @@ void donate_priority (struct thread *t, struct lock *l)
 int
 thread_get_effective_priority (struct thread *t)
 {
-  int max_donated = 0;
-  if (!list_empty (&t->donated_priorities))
-    max_donated = list_entry (list_front (&t->donated_priorities),
-                              struct donated_priority, elem)->priority;
+  int max_donated = list_empty (&t->donated_priorities) ? 0 :
+                    list_entry (list_front (&t->donated_priorities),
+                                struct donated_priority, elem)->priority;
 
   return t->base_priority > max_donated ? t->base_priority : max_donated;
 }
@@ -125,10 +124,10 @@ yield_if_lower_priority (void)
   if (list_empty (&ready_list))
     return;
 
-  struct thread *t = list_entry(list_front(&ready_list),
-                                struct thread, elem);
+  struct thread *t = list_entry (list_front (&ready_list),
+                                 struct thread, elem);
 
-  if (thread_get_priority() < thread_get_effective_priority(t))
+  if (thread_get_priority () < thread_get_effective_priority (t))
     {
       if (intr_context ())
         intr_yield_on_return ();
@@ -445,7 +444,7 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority (void) 
 {
-  return thread_get_effective_priority(thread_current ());
+  return thread_get_effective_priority (thread_current ());
 }
 
 /* Sets the current thread's nice value to NICE. */
