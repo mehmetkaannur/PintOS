@@ -100,8 +100,8 @@ donate_priority (struct thread *from, struct thread *to)
   if (to->status == THREAD_READY)
     {
       list_remove (&to->elem);
-      list_insert_ordered(&ready_list, &to->elem,
-                          compare_threads_by_priority, NULL);
+      list_insert_ordered (&ready_list, &to->elem,
+                           compare_threads_by_priority, NULL);
     }
   else if (to->waiting_for != NULL)
     {
