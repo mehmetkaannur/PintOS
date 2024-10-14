@@ -80,37 +80,34 @@ bool compare_priority (const struct list_elem *a_,
                        const struct list_elem *b_,
                        void *aux UNUSED)
 {
-  struct donated_priority *a = list_entry (a_, struct donated_priority, elem);
-  struct donated_priority *b = list_entry (b_, struct donated_priority, elem);
+  struct thread *a = list_entry (a_, struct thread, elem);
+  struct thread *b = list_entry (b_, struct thread, elem);
   
-  return a->priority >= b->priority;
+  return a->effective_priority >= b->effective_priority;
 }
 
 /* Donates the effective priority of current thread to thread t,
    to be expired when lock l is released. */
 void
-donate_priority (struct thread *from, struct thread *to, struct lock *l)
+donate_priority (struct thread *from, struct thread *to)
 {
-  struct donated_priority *p = malloc (sizeof (struct donated_priority));
-  p->priority = from->effective_priority;
-  p->lock = l;
-  bool increased_priority = p->priority > to->effective_priority;
+  // bool increased_priority = from->effective_priority > to->effective_priority;
   list_insert_ordered (&to->donated_priorities, 
-                       &p->elem, compare_priority, NULL);
+                       &from->donation_elem, compare_priority, NULL);
 
-  /* Change donee thread position in ready_list if required. */
-  if (increased_priority)
+  /* Change done thread position in ready_list if required. */
+  // if (increased_priority)
+  //   {
+  thread_update_effective_priority (to);
+  if (to->status == THREAD_READY)
     {
-      thread_update_effective_priority (to);
-      if (to->status == THREAD_READY)
-        {
-          list_remove (&to->elem);
-          list_insert_ordered(&ready_list, &to->elem,
-                              compare_threads_by_priority, NULL);
-        }
-      else if (to->waiting_for != NULL)
-        donate_priority (to, to->waiting_for->holder, to->waiting_for);
+      list_remove (&to->elem);
+      list_insert_ordered(&ready_list, &to->elem,
+                          compare_threads_by_priority, NULL);
     }
+  else if (to->waiting_for != NULL)
+    donate_priority (to, to->waiting_for->holder);
+    // }
 }
 
 /* Updates the effective priority of a given thread. */
@@ -119,7 +116,7 @@ thread_update_effective_priority (struct thread *t)
 {
   int max_donated = list_empty (&t->donated_priorities) ? 0 :
                     list_entry (list_front (&t->donated_priorities),
-                                struct donated_priority, elem)->priority;
+                                struct thread, donation_elem)->effective_priority;
 
   t->effective_priority = t->base_priority > max_donated
                         ? t->base_priority
@@ -652,13 +649,6 @@ thread_schedule_tail (struct thread *prev)
   if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
     {
       ASSERT (prev != cur);
-      struct list_elem *e = list_begin (&prev->donated_priorities);
-      while (e != list_end (&prev->donated_priorities))
-        {
-          struct donated_priority *p = list_entry (e, struct donated_priority, elem);
-          e = list_next (e);
-          free (p);
-        }
       palloc_free_page (prev);
     }
 }

@@ -212,7 +212,7 @@ lock_acquire (struct lock *lock)
 
   if (lock->holder != NULL)
     {
-      donate_priority (thread_current (), lock->holder, lock);
+      donate_priority (thread_current (), lock->holder);
       thread_current ()->waiting_for = lock;
     }
   sema_down (&lock->semaphore);
@@ -254,16 +254,13 @@ lock_release (struct lock *lock)
   struct thread *t = thread_current ();
   struct list_elem *e = list_begin (&t->donated_priorities);
   struct list_elem *next;
-  struct donated_priority *entry;
+  struct thread *entry;
   while (e != list_end (&t->donated_priorities))
     {
-      entry = list_entry (e, struct donated_priority, elem);
+      entry = list_entry (e, struct thread, donation_elem);
       next = list_next (e);
-      if (entry->lock == lock)
-        {
-          list_remove (e);
-          // free (entry);
-        }
+      if (entry->waiting_for == lock)
+        list_remove (e);
       e = next;
     }
 

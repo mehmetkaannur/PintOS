@@ -93,6 +93,8 @@ struct thread
     struct lock *waiting_for;           /* Pointer to lock thread
                                            is waiting for. */
     struct list_elem allelem;           /* List element for all threads list. */
+    struct list_elem donation_elem;     /* List element for priority 
+                                           donation list. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -111,16 +113,7 @@ struct thread
    Controlled by kernel command-line option "mlfqs". */
 extern bool thread_mlfqs;
 
-/* List element for donated_priority list. */
-struct donated_priority
-  {
-    struct list_elem elem;     /* List element. */
-    struct lock *lock;         /* Lock which when released
-                                  causes donation to expire. */
-    int priority;              /* Value of donated priority. */
-  };
-
-void donate_priority (struct thread *from, struct thread *to, struct lock *l);
+void donate_priority (struct thread *from, struct thread *to);
 void yield_if_lower_priority (void);
 
 void thread_init (void);
