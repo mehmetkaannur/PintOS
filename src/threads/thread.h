@@ -88,6 +88,7 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int base_priority;                  /* Base priority. */
+    int effective_priority;             /* Effective priority. */
     struct list donated_priorities;     /* Donated priorities list. */
     struct lock *waiting_for;           /* Pointer to lock thread
                                            is waiting for. */
@@ -150,7 +151,7 @@ void thread_yield (void);
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
-int thread_get_effective_priority (struct thread *t);
+void thread_update_effective_priority (struct thread *t);
 
 int thread_get_priority (void);
 void thread_set_priority (int);

@@ -92,15 +92,16 @@ void
 donate_priority (struct thread *from, struct thread *to, struct lock *l)
 {
   struct donated_priority *p = malloc (sizeof (struct donated_priority));
-  p->priority = thread_get_effective_priority (from);
+  p->priority = from->effective_priority;
   p->lock = l;
-  bool increased_priority = p->priority > thread_get_effective_priority (to);
+  bool increased_priority = p->priority > to->effective_priority;
   list_insert_ordered (&to->donated_priorities, 
                        &p->elem, compare_priority, NULL);
 
   /* Change donee thread position in ready_list if required. */
   if (increased_priority)
     {
+      thread_update_effective_priority (to);
       if (to->status == THREAD_READY)
         {
           list_remove (&to->elem);
@@ -112,15 +113,17 @@ donate_priority (struct thread *from, struct thread *to, struct lock *l)
     }
 }
 
-/* Returns the effective priority of a given thread. */
-int
-thread_get_effective_priority (struct thread *t)
+/* Updates the effective priority of a given thread. */
+void
+thread_update_effective_priority (struct thread *t)
 {
   int max_donated = list_empty (&t->donated_priorities) ? 0 :
                     list_entry (list_front (&t->donated_priorities),
                                 struct donated_priority, elem)->priority;
 
-  return t->base_priority > max_donated ? t->base_priority : max_donated;
+  t->effective_priority = t->base_priority > max_donated
+                        ? t->base_priority
+                        : max_donated;
 }
 
 /* Yield the current thread as soon as possible. */
@@ -133,7 +136,7 @@ yield_if_lower_priority (void)
   struct thread *t = list_entry (list_front (&ready_list),
                                  struct thread, elem);
 
-  if (thread_get_priority () < thread_get_effective_priority (t))
+  if (thread_get_priority () < t->effective_priority)
     {
       if (intr_context ())
         intr_yield_on_return ();
@@ -434,7 +437,7 @@ compare_threads_by_priority (const struct list_elem *a_,
   struct thread *a = list_entry (a_, struct thread, elem);
   struct thread *b = list_entry (b_, struct thread, elem);
   
-  return thread_get_effective_priority(a) > thread_get_effective_priority(b);
+  return a->effective_priority > b->effective_priority;
 }
 
 /* Sets the current thread's base priority to NEW_PRIORITY. */
@@ -443,6 +446,7 @@ thread_set_priority (int new_priority)
 {
   thread_current ()->base_priority = new_priority;
 
+  thread_update_effective_priority (thread_current ());
   yield_if_lower_priority ();
 }
 
@@ -450,7 +454,7 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority (void) 
 {
-  return thread_get_effective_priority (thread_current ());
+  return thread_current ()->effective_priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -570,6 +574,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->base_priority = priority;
+  t->effective_priority = priority;
   t->magic = THREAD_MAGIC;
   list_init (&t->donated_priorities);
 

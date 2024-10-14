@@ -262,10 +262,12 @@ lock_release (struct lock *lock)
       if (entry->lock == lock)
         {
           list_remove (e);
-          free (entry);
+          // free (entry);
         }
       e = next;
     }
+
+  thread_update_effective_priority (thread_current ());
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
@@ -304,9 +306,9 @@ compare_waiters_by_priority (const struct list_elem *current_ UNUSED,
 
   return list_empty (waiters)
          || (current_priority >
-             thread_get_effective_priority (list_entry (list_front (waiters),
-                                                        struct thread,
-                                                        elem)));
+             (list_entry (list_front (waiters),
+                          struct thread,
+                          elem))->effective_priority);
 }
 
 /* Initializes condition variable COND.  A condition variable
