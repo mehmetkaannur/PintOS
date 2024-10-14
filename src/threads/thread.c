@@ -91,14 +91,12 @@ bool compare_priority (const struct list_elem *a_,
 void
 donate_priority (struct thread *from, struct thread *to)
 {
-  // bool increased_priority = from->effective_priority > to->effective_priority;
   list_insert_ordered (&to->donated_priorities, 
                        &from->donation_elem, compare_priority, NULL);
 
-  /* Change done thread position in ready_list if required. */
-  // if (increased_priority)
-  //   {
   thread_update_effective_priority (to);
+  
+  /* Update donee thread position in ready_list. */
   if (to->status == THREAD_READY)
     {
       list_remove (&to->elem);
@@ -106,8 +104,10 @@ donate_priority (struct thread *from, struct thread *to)
                           compare_threads_by_priority, NULL);
     }
   else if (to->waiting_for != NULL)
-    thread_update_effective_priority (to->waiting_for->holder);
-    // }
+    {
+      list_remove (&to->donation_elem);
+      donate_priority (to, to->waiting_for->holder);
+    }
 }
 
 /* Updates the effective priority of a given thread. */
