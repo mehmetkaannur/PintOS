@@ -14,7 +14,7 @@
 
 /* Convert x to integer (rounding to nearest) */
 #define FP_TO_INT_ROUND(x) \
-    (( (x) >= 0 ) ? ( ((x) + (F)/2 ) / (F) ) : ( ((x) - (F)/2 ) / (F) ))
+    (((x) >= 0) ? (((x) + (F)/2) / (F)) : (((x) - (F)/2) / (F)))
 
 /* Add two fixed-point numbers (x and y) */
 #define ADD_FP(x, y) ((x) + (y))
@@ -29,13 +29,13 @@
 #define SUB_FP_INT(x, n) ((x) - ((n) * (F)))
 
 /* Multiply two fixed-point numbers (x by y) */
-#define MUL_FP(x, y) ( ((int64_t)(x)) * (y) / (F) )
+#define MUL_FP(x, y) (((int64_t)(x)) * (y) / (F))
 
 /* Multiply a fixed-point number by an integer (x by n) */
 #define MUL_FP_INT(x, n) ((x) * (n))
 
 /* Divide two fixed-point numbers (x by y) */
-#define DIV_FP(x, y) ( ((int64_t)(x)) * (F) / (y) )
+#define DIV_FP(x, y) (((int64_t)(x)) * (F) / (y))
 
 /* Divide a fixed-point number by an integer (x by n) */
 #define DIV_FP_INT(x, n) ((x) / (n))
