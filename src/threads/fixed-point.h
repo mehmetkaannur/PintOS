@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 
-#define BITS_BEFORE_DP 17 // Number of bits before decimal point
 #define BITS_AFTER_DP 14 // Number of bits after decimal point
 #define F (1 << BITS_AFTER_DP) // 17.14 fixed-point number representation
 
@@ -15,7 +14,7 @@
 
 /* Convert x to integer (rounding to nearest) */
 #define FP_TO_INT_ROUND(x) \
-    (((x) >= 0) ? (((x) + (F) / 2) / (F)) : (((x) - F / 2) / (F)))
+    (((x) >= 0) ? (((x) + (F)/2) / (F)) : (((x) - (F)/2) / (F)))
 
 /* Add two fixed-point numbers (x and y) */
 #define ADD_FP(x, y) ((x) + (y))
@@ -24,10 +23,10 @@
 #define SUB_FP(x, y) ((x) - (y))
 
 /* Add a fixed-point number and an integer (x and n) */
-#define ADD_FP_INT(x, n) ((x) + (n) * (F))
+#define ADD_FP_INT(x, n) ((x) + ((n) * (F)))
 
 /* Subtract an integer from a fixed-point number (n from x) */
-#define SUB_FP_INT(x, n) ((x) - (n) * (F))
+#define SUB_FP_INT(x, n) ((x) - ((n) * (F)))
 
 /* Multiply two fixed-point numbers (x by y) */
 #define MUL_FP(x, y) (((int64_t)(x)) * (y) / (F))
