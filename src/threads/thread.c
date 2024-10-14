@@ -106,7 +106,7 @@ donate_priority (struct thread *from, struct thread *to)
                           compare_threads_by_priority, NULL);
     }
   else if (to->waiting_for != NULL)
-    donate_priority (to, to->waiting_for->holder);
+    thread_update_effective_priority (to->waiting_for->holder);
     // }
 }
 
