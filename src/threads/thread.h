@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 
+typedef int32_t fixed_point_t;
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -23,6 +25,9 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+#define NICE_MIN -20                    /* Lowest nice. */
+#define NICE_DEFAULT 0                  /* Default nice. */
+#define NICE_MAX 20                     /* Highest nice. */
 
 /* A kernel thread or user process.
 
@@ -88,6 +93,8 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int base_priority;                  /* Base priority. */
+    int nice;                           /* Thread's nice value. */
+    int recent_cpu;                     /* Time spent in CPU recently. */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
