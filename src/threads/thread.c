@@ -91,6 +91,7 @@ bool compare_priority (const struct list_elem *a_,
 void
 donate_priority (struct thread *from, struct thread *to)
 {
+  enum intr_level old_level = intr_disable ();
   list_insert_ordered (&to->donated_priorities, 
                        &from->donation_elem, compare_priority, NULL);
 
@@ -108,12 +109,16 @@ donate_priority (struct thread *from, struct thread *to)
       list_remove (&to->donation_elem);
       donate_priority (to, to->waiting_for->holder);
     }
+
+  intr_set_level (old_level);
 }
 
 /* Updates the effective priority of a given thread. */
 void
 thread_update_effective_priority (struct thread *t)
 {
+  enum intr_level old_level = intr_disable ();
+
   int max_donated = list_empty (&t->donated_priorities) ? 0 :
                     list_entry (list_front (&t->donated_priorities),
                                 struct thread, donation_elem)->effective_priority;
@@ -121,6 +126,8 @@ thread_update_effective_priority (struct thread *t)
   t->effective_priority = t->base_priority > max_donated
                         ? t->base_priority
                         : max_donated;
+
+  intr_set_level (old_level);
 }
 
 /* Yield the current thread as soon as possible. */
