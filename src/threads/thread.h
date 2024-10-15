@@ -93,9 +93,16 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int base_priority;                  /* Base priority. */
+    int effective_priority;             /* Effective priority. */
+    struct list donated_priorities;     /* List of threads that donated their 
+                                           priority to this thread. */
+    struct lock *waiting_for;           /* Pointer to lock thread
+                                           is waiting for. */
     int nice;                           /* Thread's nice value. */
     int recent_cpu;                     /* Time spent in CPU recently. */
     struct list_elem allelem;           /* List element for all threads list. */
+    struct list_elem donation_elem;     /* List element for priority 
+                                           donation list. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -114,7 +121,8 @@ struct thread
    Controlled by kernel command-line option "mlfqs". */
 extern bool thread_mlfqs;
 
-void yield_asap (void);
+void donate_priority (struct thread *from, struct thread *to);
+void yield_if_lower_priority (void);
 
 void thread_init (void);
 void thread_start (void);
@@ -143,6 +151,8 @@ void thread_yield (void);
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
+
+void thread_update_effective_priority (struct thread *t);
 
 int thread_get_priority (void);
 void thread_set_priority (int);

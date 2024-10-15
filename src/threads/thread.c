@@ -12,6 +12,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 #include "threads/fixed-point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -83,14 +84,106 @@ static void update_recent_cpu_func (struct thread *t, void *aux);
 static void update_priority_func (struct thread *t, void *aux UNUSED);
 static void calculate_priority (void);
 static int bound_nice (int nice);
+void yield_asap (void);
 
 void
-yield_asap (void)
+yield_asap ()
 {
   if (intr_context ())
     intr_yield_on_return ();
   else
     thread_yield ();
+}
+
+
+/* Returns true if first thread has higher effective priority than second */
+bool
+compare_threads_by_priority (const struct list_elem *a_,
+                             const struct list_elem *b_,
+                             void *aux UNUSED)
+{
+  struct thread *a = list_entry (a_, struct thread, elem);
+  struct thread *b = list_entry (b_, struct thread, elem);
+  
+  return a->effective_priority > b->effective_priority;
+}
+
+/* Returns true if first thread has higher or equal effective priority than second */
+static bool
+bsd_compare_threads_by_priority (const struct list_elem *a_,
+                             const struct list_elem *b_,
+                             void *aux UNUSED)
+{
+  struct thread *a = list_entry (a_, struct thread, elem);
+  struct thread *b = list_entry (b_, struct thread, elem);
+  
+  return a->effective_priority >= b->effective_priority;
+}
+
+/* Donates the effective priority of current thread to thread t,
+   to be expired when lock l is released. */
+void
+donate_priority (struct thread *from, struct thread *to)
+{
+  enum intr_level old_level = intr_disable ();
+  list_insert_ordered (&to->donated_priorities, 
+                       &from->donation_elem,
+                       compare_threads_by_priority,
+                       NULL);
+
+  thread_update_effective_priority (to);
+  
+  /* Update donee thread position in ready_list. */
+  if (to->status == THREAD_READY)
+    {
+      list_remove (&to->elem);
+      list_insert_ordered (&ready_list, &to->elem,
+                           compare_threads_by_priority, NULL);
+    }
+  else if (to->waiting_for != NULL)
+    {
+      list_remove (&to->donation_elem);
+      donate_priority (to, to->waiting_for->holder);
+    }
+
+  intr_set_level (old_level);
+}
+
+/* Updates the effective priority of a given thread. */
+void
+thread_update_effective_priority (struct thread *t)
+{
+  enum intr_level old_level = intr_disable ();
+
+  int max_donated = list_empty (&t->donated_priorities) ? 0 :
+                    list_entry (list_front (&t->donated_priorities),
+                                struct thread,
+                                donation_elem)->effective_priority;
+
+  t->effective_priority = t->base_priority > max_donated
+                        ? t->base_priority
+                        : max_donated;
+
+  intr_set_level (old_level);
+}
+
+/* Yield the current thread as soon as possible. */
+void
+yield_if_lower_priority (void)
+{
+  if (list_empty (&ready_list))
+    return;
+
+  struct thread *t = list_entry (list_front (&ready_list),
+                                 struct thread, elem);
+
+  if (thread_get_priority () < t->effective_priority)
+    {
+      if (intr_context ())
+        intr_yield_on_return ();
+      else
+        thread_yield ();
+    }
 }
 
 /* Initializes the threading system by transforming the code
@@ -278,9 +371,7 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
-  /* If newly created thread has higher priority then yield */
-  if (thread_current ()->base_priority < t->base_priority)
-    yield_asap (); 
+  yield_if_lower_priority (); 
   
   return tid;
 }
@@ -414,18 +505,7 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
-bool
-compare_threads_by_priority (const struct list_elem *a_,
-                             const struct list_elem *b_,
-                             void *aux UNUSED)
-{
-  struct thread *a = list_entry (a_, struct thread, elem);
-  struct thread *b = list_entry (b_, struct thread, elem);
-  
-  return a->base_priority >= b->base_priority;
-}
-
-/* Sets the current thread's priority to NEW_PRIORITY. */
+/* Sets the current thread's base priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
 {
@@ -437,21 +517,15 @@ thread_set_priority (int new_priority)
 
   thread_current ()->base_priority = new_priority;
 
-  if (!list_empty (&ready_list))
-    {
-      struct thread *t = list_entry (list_front (&ready_list),
-                                     struct thread, elem);
-
-      if (new_priority < t->base_priority)
-        yield_asap ();
-    } 
+  thread_update_effective_priority (thread_current ());
+  yield_if_lower_priority ();
 }
 
-/* Returns the current thread's priority. */
+/* Returns the current thread's effective priority. */
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->base_priority;
+  return thread_current ()->effective_priority;
 }
 
 void
@@ -471,13 +545,14 @@ update_priority_func(struct thread *t, void *aux UNUSED)
   }
 
   t->base_priority = priority;
+  t->effective_priority = priority;
 
   /* Adjust the position according to the new priority (if not running thread). */
   if (t->status == THREAD_READY)
     {
       list_remove(&t->elem);
       list_insert_ordered(&ready_list, &t->elem, 
-        compare_threads_by_priority, NULL);
+        bsd_compare_threads_by_priority, NULL);
     }
 }
 
@@ -518,7 +593,7 @@ thread_set_nice (int nice UNUSED)
       struct thread, elem);
     if (thread_current()->base_priority < highest_priority->base_priority) 
     {
-      yield_asap ();
+      yield_if_lower_priority ();
     }
   }
 }
@@ -662,6 +737,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
+
   /* Set nice and recent_cpu value. */
   if (t == initial_thread)
   {
@@ -683,8 +759,11 @@ init_thread (struct thread *t, const char *name, int priority)
   else
   {
     t->base_priority = priority;
+    t->effective_priority = priority;
   }
+
   t->magic = THREAD_MAGIC;
+  list_init (&t->donated_priorities);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
