@@ -76,6 +76,8 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+
+/* Functions for advanced scheduler. */
 static void update_load_avg (void);
 static void thread_update_recent_cpu (void);
 static void update_recent_cpu_func (struct thread *t, void *aux);
@@ -579,7 +581,7 @@ thread_set_nice (int nice UNUSED)
       struct thread, elem);
     if (thread_current()->base_priority < highest_priority->base_priority) 
     {
-      yield_asap ();
+      yield_if_lower_priority ();
     }
   }
 }
