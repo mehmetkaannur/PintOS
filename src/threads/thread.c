@@ -108,6 +108,18 @@ compare_threads_by_priority (const struct list_elem *a_,
   return a->effective_priority > b->effective_priority;
 }
 
+/* Returns true if first thread has higher or equal effective priority than second */
+static bool
+bsd_compare_threads_by_priority (const struct list_elem *a_,
+                             const struct list_elem *b_,
+                             void *aux UNUSED)
+{
+  struct thread *a = list_entry (a_, struct thread, elem);
+  struct thread *b = list_entry (b_, struct thread, elem);
+  
+  return a->effective_priority >= b->effective_priority;
+}
+
 /* Donates the effective priority of current thread to thread t,
    to be expired when lock l is released. */
 void
@@ -540,7 +552,7 @@ update_priority_func(struct thread *t, void *aux UNUSED)
     {
       list_remove(&t->elem);
       list_insert_ordered(&ready_list, &t->elem, 
-        compare_threads_by_priority, NULL);
+        bsd_compare_threads_by_priority, NULL);
     }
 }
 
