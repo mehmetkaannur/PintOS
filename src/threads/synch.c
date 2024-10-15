@@ -328,19 +328,14 @@ compare_cond_waiters_by_priority (const struct list_elem *a_,
   return a_priority < b_priority;
 }
 
-/* Returns true if current thread has higher priority than thread associated
-   with other waiter. */
+/* Returns true if first thread has lower priority than second */
 bool
 compare_waiters_by_priority (const struct list_elem *a_,
                              const struct list_elem *b_,
                              void *aux UNUSED)
 {
-  struct thread *a = list_entry (a_,
-                                 struct thread,
-                                 elem);
-  struct thread *b = list_entry (b_,
-                                 struct thread,
-                                 elem);
+  struct thread *a = list_entry (a_, struct thread, elem);
+  struct thread *b = list_entry (b_, struct thread, elem);
 
   return a->effective_priority < b->effective_priority;
 }

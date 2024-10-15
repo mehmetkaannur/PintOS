@@ -71,19 +71,17 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-static bool compare_priority (const struct list_elem *a_,
-                              const struct list_elem *b_,
-                              void *aux UNUSED);
 
-/* Returns true if first element has greater or equal priority to second */
-bool compare_priority (const struct list_elem *a_,
-                       const struct list_elem *b_,
-                       void *aux UNUSED)
+/* Returns true if first thread has higher effective priority than second */
+bool
+compare_threads_by_priority (const struct list_elem *a_,
+                             const struct list_elem *b_,
+                             void *aux UNUSED)
 {
   struct thread *a = list_entry (a_, struct thread, elem);
   struct thread *b = list_entry (b_, struct thread, elem);
   
-  return a->effective_priority >= b->effective_priority;
+  return a->effective_priority > b->effective_priority;
 }
 
 /* Donates the effective priority of current thread to thread t,
@@ -93,7 +91,9 @@ donate_priority (struct thread *from, struct thread *to)
 {
   enum intr_level old_level = intr_disable ();
   list_insert_ordered (&to->donated_priorities, 
-                       &from->donation_elem, compare_priority, NULL);
+                       &from->donation_elem,
+                       compare_threads_by_priority,
+                       NULL);
 
   thread_update_effective_priority (to);
   
@@ -121,7 +121,8 @@ thread_update_effective_priority (struct thread *t)
 
   int max_donated = list_empty (&t->donated_priorities) ? 0 :
                     list_entry (list_front (&t->donated_priorities),
-                                struct thread, donation_elem)->effective_priority;
+                                struct thread,
+                                donation_elem)->effective_priority;
 
   t->effective_priority = t->base_priority > max_donated
                         ? t->base_priority
@@ -430,18 +431,6 @@ thread_foreach (thread_action_func *func, void *aux)
       struct thread *t = list_entry (e, struct thread, allelem);
       func (t, aux);
     }
-}
-
-/* Returns true if first thread has higher effective priority than second */
-bool
-compare_threads_by_priority (const struct list_elem *a_,
-                             const struct list_elem *b_,
-                             void *aux UNUSED)
-{
-  struct thread *a = list_entry (a_, struct thread, elem);
-  struct thread *b = list_entry (b_, struct thread, elem);
-  
-  return a->effective_priority > b->effective_priority;
 }
 
 /* Sets the current thread's base priority to NEW_PRIORITY. */
