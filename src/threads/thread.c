@@ -707,27 +707,27 @@ init_thread (struct thread *t, const char *name, int priority)
 
   /* Set nice and recent_cpu value. */
   if (t == initial_thread)
-  {
-    t->nice = 0;
-    t->recent_cpu = INT_TO_FP(0);
-  }
+    {
+      t->nice = 0;
+      t->recent_cpu = INT_TO_FP(0);
+    }
   else
-  {
-    t->nice = thread_current ()->nice;
-    t->recent_cpu = thread_current ()->recent_cpu;
-  }
+    {
+      t->nice = thread_current ()->nice;
+      t->recent_cpu = thread_current ()->recent_cpu;
+    }
 
   /* Set priority according to scheduler type. */
   if (thread_mlfqs)
-  {
-    /* Recalculate priority */
-    thread_update_bsd_priority (t, NULL);
-  }
+    {
+      /* Recalculate priority */
+      thread_update_bsd_priority (t, NULL);
+    }
   else
-  {
-    t->base_priority = priority;
-    t->effective_priority = priority;
-  }
+    {
+      t->base_priority = priority;
+      t->effective_priority = priority;
+    }
 
   t->magic = THREAD_MAGIC;
   list_init (&t->donated_priorities);
