@@ -84,17 +84,6 @@ static void update_recent_cpu_func (struct thread *t, void *aux);
 static void update_priority_func (struct thread *t, void *aux UNUSED);
 static void calculate_priority (void);
 static int bound_nice (int nice);
-void yield_asap (void);
-
-void
-yield_asap ()
-{
-  if (intr_context ())
-    intr_yield_on_return ();
-  else
-    thread_yield ();
-}
-
 
 /* Returns true if first thread has higher effective priority than second */
 bool
@@ -285,14 +274,7 @@ thread_tick (void)
         calculate_priority();
 
         /* Check if yield is necessary. */
-        if (!list_empty(&ready_list))
-          {
-            struct thread *highest_priority = list_entry (list_front (&ready_list), struct thread, elem);
-            if (t->base_priority < highest_priority->base_priority) 
-            {
-              intr_yield_on_return();
-            }
-          }
+        yield_if_lower_priority ();
       }
   }
 
@@ -587,15 +569,7 @@ thread_set_nice (int nice UNUSED)
   update_priority_func(thread_current(), NULL);
 
   /* Check if yield is necessary. */
-  if (!list_empty (&ready_list))
-  {
-    struct thread *highest_priority = list_entry (list_front (&ready_list), 
-      struct thread, elem);
-    if (thread_current()->base_priority < highest_priority->base_priority) 
-    {
-      yield_if_lower_priority ();
-    }
-  }
+  yield_if_lower_priority ();
 }
 
 /* Returns the current thread's nice value. */
