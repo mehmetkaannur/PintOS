@@ -121,16 +121,12 @@ struct thread
    Controlled by kernel command-line option "mlfqs". */
 extern bool thread_mlfqs;
 
-void donate_priority (struct thread *from, struct thread *to);
+void thread_donate_priority (struct thread *from, struct thread *to);
 void yield_if_lower_priority (void);
 
 void thread_init (void);
 void thread_start (void);
 size_t threads_ready(void);
-
-bool compare_threads_by_priority (const struct list_elem *a_,
-                                  const struct list_elem *b_,
-                                  void *aux UNUSED);
 
 void thread_tick (void);
 void thread_print_stats (void);

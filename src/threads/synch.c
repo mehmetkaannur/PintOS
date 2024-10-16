@@ -125,7 +125,9 @@ sema_up (struct semaphore *sema)
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) 
     {
-      struct list_elem *e = list_max (&sema->waiters, compare_waiters_by_priority, NULL);
+      struct list_elem *e = list_max (&sema->waiters,
+                                      compare_waiters_by_priority,
+                                      NULL);
       list_remove (e);
       struct thread *t = list_entry (e, struct thread, elem);
       thread_unblock (t);
@@ -213,21 +215,25 @@ lock_acquire (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
-  
+
+  /* If another thread holds the lock, donate priority to that thread. */ 
   if (lock->holder != NULL)
     {
-      donate_priority (thread_current (), lock->holder);
+      thread_donate_priority (thread_current (), lock->holder);
       thread_current ()->waiting_for = lock;
     }
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
   thread_current ()->waiting_for = NULL;
 
+  /* Transfer donations from threads to the previous lock holder
+     to the current thread. */
   struct list_elem *e;
   for (e = list_begin (&lock->semaphore.waiters);
        e != list_end (&lock->semaphore.waiters);
        e = list_next (e))
-    donate_priority (list_entry (e, struct thread, elem), thread_current ());
+    thread_donate_priority (list_entry (e, struct thread, elem),
+                            thread_current ());
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -265,6 +271,8 @@ lock_release (struct lock *lock)
   struct list_elem *e = list_begin (&t->donated_priorities);
   struct list_elem *next;
   struct thread *entry;
+  
+  /* Remove donations associated with this lock. */
   while (e != list_end (&t->donated_priorities))
     {
       entry = list_entry (e, struct thread, donation_elem);
