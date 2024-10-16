@@ -265,23 +265,21 @@ thread_tick (void)
   {
     /* Increment recent_cpu for running thread. */
     if (t != idle_thread)
-      {
-        t->recent_cpu = ADD_FP_INT(t->recent_cpu, 1);
-      }
+      t->recent_cpu = ADD_FP_INT(t->recent_cpu, 1);
 
     /* Recalculate load_avg and recent_cpu in each tick. */
     if (timer_ticks () % TIMER_FREQ == 0)
       {
-        update_load_avg();
-        threads_update_recent_cpu();
+        update_load_avg ();
+        threads_update_recent_cpu ();
       }
 
     /* Recalculate priority in each time slice. */
     if (timer_ticks() % TIME_SLICE == 0)
       {
-        threads_update_bsd_priority();
+        threads_update_bsd_priority ();
 
-        /* Check if yield is necessary. */
+        /* Yield if necessary. */
         yield_if_lower_priority ();
       }
   }
@@ -501,9 +499,7 @@ thread_set_priority (int new_priority)
 {
   /* Ignore if advanced scheduler is active. */
   if (thread_mlfqs) 
-  {
     return;
-  }
 
   thread_current ()->base_priority = new_priority;
 
@@ -526,55 +522,49 @@ thread_update_bsd_priority(struct thread *t, void *aux UNUSED)
     (DIV_FP_INT(t->recent_cpu, 4))), (t->nice * 2)));
 
   if (priority > PRI_MAX) 
-  {
     priority = PRI_MAX;
-  }
   else if (priority < PRI_MIN) 
-  {
     priority = PRI_MIN;
-  }
 
   t->base_priority = priority;
   t->effective_priority = priority;
 
-  /* Adjust the position according to the new priority (if not running thread). */
+  /* Adjust the position in ready_list according to the new priority. */
   if (t->status == THREAD_READY)
     {
       list_remove(&t->elem);
       list_insert_ordered(&ready_list, &t->elem, 
-        bsd_compare_threads_by_priority, NULL);
+                          bsd_compare_threads_by_priority, NULL);
     }
 }
 
 /* Re-calculates the thread's priority value. */
 void
-threads_update_bsd_priority()
+threads_update_bsd_priority ()
 {
-  thread_foreach(thread_update_bsd_priority, NULL);
+  thread_foreach (thread_update_bsd_priority, NULL);
 }
 
 /* Bounds the nice variable between NICE_MIN and NICE_MAX. */
 int
 bound_nice(int nice) {
-  if (nice < NICE_MIN) {
+  if (nice < NICE_MIN)
     return NICE_MIN;
-  }
-  else if (nice > NICE_MAX) {
+  
+  if (nice > NICE_MAX)
     return NICE_MAX;
-  }
   
   return nice;
 }
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_set_nice (int nice) 
 {
-  nice = bound_nice(nice);
-  thread_current()->nice = nice;
+  thread_current ()->nice = bound_nice (nice);
 
   /* Update current thread's priority using new nice. */
-  thread_update_bsd_priority(thread_current(), NULL);
+  thread_update_bsd_priority (thread_current (), NULL);
 
   /* Check if yield is necessary. */
   yield_if_lower_priority ();
@@ -584,17 +574,16 @@ thread_set_nice (int nice UNUSED)
 int
 thread_get_nice (void) 
 {
-  return thread_current()->nice;
+  return thread_current ()->nice;
 }
 
 void
 update_load_avg (void)
 {
-  int ready_thread_count = list_size(&ready_list);
+  int ready_thread_count = list_size (&ready_list);
   if (thread_current() != idle_thread) 
-  {
     ready_thread_count++;
-  }
+
   load_avg = ADD_FP(DIV_FP_INT(MUL_FP_INT(load_avg, 59), 60), 
     DIV_FP_INT(INT_TO_FP(ready_thread_count), 60));
 }
@@ -603,10 +592,7 @@ update_load_avg (void)
 int
 thread_get_load_avg (void) 
 {
-  int load_avg_val = FP_TO_INT_ROUND(MUL_FP_INT
-      (load_avg, 100));
-
-  return load_avg_val;
+  return FP_TO_INT_ROUND(MUL_FP_INT(load_avg, 100));
 }
 
 void
@@ -618,21 +604,19 @@ thread_update_recent_cpu(struct thread *t, void *aux)
 
 /* Update recent_cpu for every thread. */
 void
-threads_update_recent_cpu()
+threads_update_recent_cpu ()
 {
   fixed_point_t coeff = DIV_FP(MUL_FP_INT(load_avg, 2), 
     ADD_FP_INT(MUL_FP_INT(load_avg, 2), 1));
-  thread_foreach(thread_update_recent_cpu, &coeff);
+  thread_foreach (thread_update_recent_cpu, &coeff);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  int recent_cpu_val = FP_TO_INT_ROUND(MUL_FP_INT
+  return FP_TO_INT_ROUND(MUL_FP_INT
     (thread_current()->recent_cpu, 100));
-  
-  return recent_cpu_val;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -729,15 +713,15 @@ init_thread (struct thread *t, const char *name, int priority)
   }
   else
   {
-    t->nice = thread_current()->nice;
-    t->recent_cpu = thread_current()->recent_cpu;
+    t->nice = thread_current ()->nice;
+    t->recent_cpu = thread_current ()->recent_cpu;
   }
 
   /* Set priority according to scheduler type. */
   if (thread_mlfqs)
   {
     /* Recalculate priority */
-    thread_update_bsd_priority(t, NULL);
+    thread_update_bsd_priority (t, NULL);
   }
   else
   {
