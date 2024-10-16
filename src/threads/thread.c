@@ -137,6 +137,7 @@ thread_donate_priority (struct thread *from, struct thread *to)
       list_insert_ordered (&ready_list, &to->elem,
                            compare_threads_by_priority, NULL);
     }
+  /* Update donation made by 'to' thread. */
   else if (to->waiting_for != NULL)
     {
       list_remove (&to->donation_elem);
