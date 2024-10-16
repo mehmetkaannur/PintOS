@@ -452,7 +452,7 @@ thread_exit (void)
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  list_remove (&thread_current()->allelem);
+  list_remove (&thread_current ()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -533,9 +533,9 @@ thread_update_bsd_priority(struct thread *t, void *aux UNUSED)
   /* Adjust the position in ready_list according to the new priority. */
   if (t->status == THREAD_READY)
     {
-      list_remove(&t->elem);
-      list_insert_ordered(&ready_list, &t->elem, 
-                          bsd_compare_threads_by_priority, NULL);
+      list_remove (&t->elem);
+      list_insert_ordered (&ready_list, &t->elem, 
+                           bsd_compare_threads_by_priority, NULL);
     }
 }
 
@@ -582,7 +582,7 @@ void
 update_load_avg (void)
 {
   int ready_thread_count = list_size (&ready_list);
-  if (thread_current() != idle_thread) 
+  if (thread_current () != idle_thread) 
     ready_thread_count++;
 
   load_avg = ADD_FP(DIV_FP_INT(MUL_FP_INT(load_avg, 59), 60), 
@@ -597,7 +597,7 @@ thread_get_load_avg (void)
 }
 
 void
-thread_update_recent_cpu(struct thread *t, void *aux)
+thread_update_recent_cpu (struct thread *t, void *aux)
 {
   fixed_point_t coeff = *((fixed_point_t *) aux);
   t->recent_cpu = ADD_FP_INT(MUL_FP(coeff, t->recent_cpu), t->nice);
@@ -617,7 +617,7 @@ int
 thread_get_recent_cpu (void) 
 {
   return FP_TO_INT_ROUND(MUL_FP_INT
-    (thread_current()->recent_cpu, 100));
+    (thread_current ()->recent_cpu, 100));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.

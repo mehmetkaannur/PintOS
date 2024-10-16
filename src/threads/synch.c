@@ -271,6 +271,8 @@ lock_release (struct lock *lock)
   struct list_elem *e = list_begin (&t->donated_priorities);
   struct list_elem *next;
   struct thread *entry;
+  
+  /* Remove donations associated with this lock. */
   while (e != list_end (&t->donated_priorities))
     {
       entry = list_entry (e, struct thread, donation_elem);
