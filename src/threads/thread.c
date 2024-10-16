@@ -77,13 +77,20 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+static bool compare_threads_by_priority (const struct list_elem *a_,
+                                         const struct list_elem *b_,
+                                         void *aux UNUSED);
+
 /* Functions for advanced scheduler. */
 static void update_load_avg (void);
-static void thread_update_recent_cpu (void);
-static void update_recent_cpu_func (struct thread *t, void *aux);
-static void update_priority_func (struct thread *t, void *aux UNUSED);
-static void calculate_priority (void);
+static void threads_update_recent_cpu (void);
+static void thread_update_recent_cpu (struct thread *t, void *aux);
+static void threads_update_bsd_priority (void);
+static void thread_update_bsd_priority (struct thread *t, void *aux UNUSED);
 static int bound_nice (int nice);
+static bool bsd_compare_threads_by_priority (const struct list_elem *a_,
+                                             const struct list_elem *b_,
+                                             void *aux UNUSED);
 
 /* Returns true if first thread has higher effective priority than second */
 bool
@@ -97,11 +104,12 @@ compare_threads_by_priority (const struct list_elem *a_,
   return a->effective_priority > b->effective_priority;
 }
 
-/* Returns true if first thread has higher or equal effective priority than second */
-static bool
+/* Returns true if first thread has higher or equal effective priority 
+   than second */
+bool
 bsd_compare_threads_by_priority (const struct list_elem *a_,
-                             const struct list_elem *b_,
-                             void *aux UNUSED)
+                                 const struct list_elem *b_,
+                                 void *aux UNUSED)
 {
   struct thread *a = list_entry (a_, struct thread, elem);
   struct thread *b = list_entry (b_, struct thread, elem);
@@ -112,7 +120,7 @@ bsd_compare_threads_by_priority (const struct list_elem *a_,
 /* Donates the effective priority of current thread to thread t,
    to be expired when lock l is released. */
 void
-donate_priority (struct thread *from, struct thread *to)
+thread_donate_priority (struct thread *from, struct thread *to)
 {
   enum intr_level old_level = intr_disable ();
   list_insert_ordered (&to->donated_priorities, 
@@ -132,7 +140,7 @@ donate_priority (struct thread *from, struct thread *to)
   else if (to->waiting_for != NULL)
     {
       list_remove (&to->donation_elem);
-      donate_priority (to, to->waiting_for->holder);
+      thread_donate_priority (to, to->waiting_for->holder);
     }
 
   intr_set_level (old_level);
@@ -265,13 +273,13 @@ thread_tick (void)
     if (timer_ticks () % TIMER_FREQ == 0)
       {
         update_load_avg();
-        thread_update_recent_cpu();
+        threads_update_recent_cpu();
       }
 
     /* Recalculate priority in each time slice. */
     if (timer_ticks() % TIME_SLICE == 0)
       {
-        calculate_priority();
+        threads_update_bsd_priority();
 
         /* Check if yield is necessary. */
         yield_if_lower_priority ();
@@ -511,7 +519,7 @@ thread_get_priority (void)
 }
 
 void
-update_priority_func(struct thread *t, void *aux UNUSED)
+thread_update_bsd_priority(struct thread *t, void *aux UNUSED)
 {
   fixed_point_t fp_primax = INT_TO_FP(PRI_MAX);
   int priority = FP_TO_INT_FLOOR(SUB_FP_INT(SUB_FP(fp_primax, 
@@ -540,9 +548,9 @@ update_priority_func(struct thread *t, void *aux UNUSED)
 
 /* Re-calculates the thread's priority value. */
 void
-calculate_priority()
+threads_update_bsd_priority()
 {
-  thread_foreach(update_priority_func, NULL);
+  thread_foreach(thread_update_bsd_priority, NULL);
 }
 
 /* Bounds the nice variable between NICE_MIN and NICE_MAX. */
@@ -566,7 +574,7 @@ thread_set_nice (int nice UNUSED)
   thread_current()->nice = nice;
 
   /* Update current thread's priority using new nice. */
-  update_priority_func(thread_current(), NULL);
+  thread_update_bsd_priority(thread_current(), NULL);
 
   /* Check if yield is necessary. */
   yield_if_lower_priority ();
@@ -602,18 +610,19 @@ thread_get_load_avg (void)
 }
 
 void
-update_recent_cpu_func(struct thread *t, void *aux)
+thread_update_recent_cpu(struct thread *t, void *aux)
 {
   fixed_point_t coeff = *((fixed_point_t *) aux);
   t->recent_cpu = ADD_FP_INT(MUL_FP(coeff, t->recent_cpu), t->nice);
 }
 
+/* Update recent_cpu for every thread. */
 void
-thread_update_recent_cpu()
+threads_update_recent_cpu()
 {
   fixed_point_t coeff = DIV_FP(MUL_FP_INT(load_avg, 2), 
     ADD_FP_INT(MUL_FP_INT(load_avg, 2), 1));
-  thread_foreach(update_recent_cpu_func, &coeff);
+  thread_foreach(thread_update_recent_cpu, &coeff);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -728,7 +737,7 @@ init_thread (struct thread *t, const char *name, int priority)
   if (thread_mlfqs)
   {
     /* Recalculate priority */
-    update_priority_func(t, NULL);
+    thread_update_bsd_priority(t, NULL);
   }
   else
   {

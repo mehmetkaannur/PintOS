@@ -216,7 +216,7 @@ lock_acquire (struct lock *lock)
   
   if (lock->holder != NULL)
     {
-      donate_priority (thread_current (), lock->holder);
+      thread_donate_priority (thread_current (), lock->holder);
       thread_current ()->waiting_for = lock;
     }
   sema_down (&lock->semaphore);
@@ -227,7 +227,7 @@ lock_acquire (struct lock *lock)
   for (e = list_begin (&lock->semaphore.waiters);
        e != list_end (&lock->semaphore.waiters);
        e = list_next (e))
-    donate_priority (list_entry (e, struct thread, elem), thread_current ());
+    thread_donate_priority (list_entry (e, struct thread, elem), thread_current ());
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
