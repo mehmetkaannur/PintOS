@@ -23,9 +23,10 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
-/* List of processes in THREAD_READY state, that is, processes
-   that are ready to run but not actually running. */
-static struct list ready_list;
+/* Array of queues for each priority where each queue is a list of processes
+   in THREAD_READY state, that is, processes that are ready to run but not
+   actually running. */
+static struct list ready_list[PRI_MAX-PRI_MIN];
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -76,7 +77,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-
+static void thread_insert_ready_list (struct list_elem *e, bool bsd);
 static bool compare_threads_by_priority (const struct list_elem *a_,
                                          const struct list_elem *b_,
                                          void *aux UNUSED);
@@ -91,6 +92,18 @@ static int bound_nice (int nice);
 static bool bsd_compare_threads_by_priority (const struct list_elem *a_,
                                              const struct list_elem *b_,
                                              void *aux UNUSED);
+
+/* Inserts thread into correct queue based on priority. */
+static void
+thread_insert_ready_list (struct list_elem *elem, bool bsd)
+{
+  struct thread *t = list_entry (elem, struct thread, elem);
+  list_insert_ordered (ready_list + t->effective_priority - PRI_MIN,
+                       elem, 
+                       bsd ? bsd_compare_threads_by_priority
+                           : compare_threads_by_priority,
+                       NULL);
+}
 
 /* Returns true if first thread has higher effective priority than second */
 bool
@@ -134,8 +147,7 @@ thread_donate_priority (struct thread *from, struct thread *to)
   if (to->status == THREAD_READY)
     {
       list_remove (&to->elem);
-      list_insert_ordered (&ready_list, &to->elem,
-                           compare_threads_by_priority, NULL);
+      thread_insert_ready_list (&to->elem, false);
     }
   /* Update donation made by 'to' thread. */
   else if (to->waiting_for != NULL)
@@ -169,11 +181,22 @@ thread_update_effective_priority (struct thread *t)
 void
 yield_if_lower_priority (void)
 {
-  if (list_empty (&ready_list))
-    return;
+  int i = 0;
+  struct thread *t = NULL;
+  for (i = PRI_MAX; i >= PRI_MIN; i--)
+    {
+      if (!list_empty (ready_list + i - PRI_MIN))
+        {
+          t = list_entry (list_front (ready_list + i - PRI_MIN),
+                          struct thread,
+                          elem);
+          break;
+        }
 
-  struct thread *t = list_entry (list_front (&ready_list),
-                                 struct thread, elem);
+    }
+
+  if (t == NULL)
+    return;
 
   if (thread_get_priority () < t->effective_priority)
     {
@@ -203,7 +226,9 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
-  list_init (&ready_list);
+  int i;
+  for (i = PRI_MIN; i <= PRI_MAX; i++)
+    list_init (ready_list + i - PRI_MIN);
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -239,7 +264,10 @@ size_t
 threads_ready (void)
 {
   enum intr_level old_level = intr_disable ();
-  size_t ready_thread_count = list_size (&ready_list);
+  int i = 0;
+  size_t ready_thread_count = 0;
+  for (i = PRI_MIN; i <= PRI_MAX; i++)
+    ready_thread_count += list_size (ready_list + i - PRI_MIN); 
   intr_set_level (old_level);
   return ready_thread_count;
 }
@@ -398,8 +426,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_insert_ordered (&ready_list, &t->elem, 
-                       compare_threads_by_priority, NULL);
+  thread_insert_ready_list (&t->elem, false);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -470,8 +497,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_insert_ordered (&ready_list, &cur->elem, 
-                         compare_threads_by_priority, NULL);
+    thread_insert_ready_list (&cur->elem, false);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -534,8 +560,7 @@ thread_update_bsd_priority(struct thread *t, void *aux UNUSED)
   if (t->status == THREAD_READY)
     {
       list_remove (&t->elem);
-      list_insert_ordered (&ready_list, &t->elem, 
-                           bsd_compare_threads_by_priority, NULL);
+      thread_insert_ready_list (&t->elem, true);
     }
 }
 
@@ -581,7 +606,7 @@ thread_get_nice (void)
 void
 update_load_avg (void)
 {
-  int ready_thread_count = list_size (&ready_list);
+  int ready_thread_count = threads_ready ();
   if (thread_current () != idle_thread) 
     ready_thread_count++;
 
@@ -759,10 +784,16 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
-    return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  int i = 0;
+  for (i = PRI_MAX; i >= PRI_MIN; i--)
+    {
+      if (!list_empty (ready_list + i - PRI_MIN))
+        return list_entry (list_pop_front (ready_list + i - PRI_MIN),
+                           struct thread,
+                           elem);
+    }
+
+  return idle_thread;
 }
 
 /* Completes a thread switch by activating the new thread's page
