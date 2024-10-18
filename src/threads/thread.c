@@ -93,7 +93,8 @@ static bool bsd_compare_threads_by_priority (const struct list_elem *a_,
                                              const struct list_elem *b_,
                                              void *aux UNUSED);
 
-/* Inserts thread into correct queue based on priority. */
+/* Inserts thread into correct queue based on priority.
+   This function must be called with interrupts turned off.  */
 static void
 thread_insert_ready_list (struct list_elem *elem, bool bsd)
 {
@@ -183,17 +184,19 @@ yield_if_lower_priority (void)
 {
   int i = 0;
   struct thread *t = NULL;
+  enum intr_level old_level = intr_disable ();
+  
+  /* Find highest priority ready thread. */
   for (i = PRI_MAX; i >= PRI_MIN; i--)
-    {
-      if (!list_empty (ready_list + i - PRI_MIN))
-        {
-          t = list_entry (list_front (ready_list + i - PRI_MIN),
-                          struct thread,
-                          elem);
-          break;
-        }
+    if (!list_empty (ready_list + i - PRI_MIN))
+      {
+        t = list_entry (list_front (ready_list + i - PRI_MIN),
+                        struct thread,
+                        elem);
+        break;
+      }
 
-    }
+  intr_set_level (old_level);
 
   if (t == NULL)
     return;
