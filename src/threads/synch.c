@@ -285,12 +285,12 @@ lock_release (struct lock *lock)
   enum intr_level old_level = intr_disable ();
   
   struct thread *t = thread_current ();
-  struct list_elem *e = list_begin (&t->donated_priorities);
+  struct list_elem *e = list_begin (&t->priority_donors);
   struct list_elem *next;
   struct thread *entry;
   
   /* Remove donations associated with this lock. */
-  while (e != list_end (&t->donated_priorities))
+  while (e != list_end (&t->priority_donors))
     {
       entry = list_entry (e, struct thread, donation_elem);
       next = list_next (e);

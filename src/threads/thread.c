@@ -137,7 +137,7 @@ void
 thread_donate_priority (struct thread *from, struct thread *to)
 {
   enum intr_level old_level = intr_disable ();
-  list_insert_ordered (&to->donated_priorities, 
+  list_insert_ordered (&to->priority_donors, 
                        &from->donation_elem,
                        compare_threads_by_priority,
                        NULL);
@@ -166,8 +166,8 @@ thread_update_effective_priority (struct thread *t)
 {
   enum intr_level old_level = intr_disable ();
 
-  int max_donated = list_empty (&t->donated_priorities) ? 0 :
-                    list_entry (list_front (&t->donated_priorities),
+  int max_donated = list_empty (&t->priority_donors) ? 0 :
+                    list_entry (list_front (&t->priority_donors),
                                 struct thread,
                                 donation_elem)->effective_priority;
 
@@ -759,7 +759,7 @@ init_thread (struct thread *t, const char *name, int priority)
     }
 
   t->magic = THREAD_MAGIC;
-  list_init (&t->donated_priorities);
+  list_init (&t->priority_donors);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
