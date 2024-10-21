@@ -90,7 +90,8 @@ static void threads_update_bsd_priority (void);
 static void thread_update_bsd_priority (struct thread *t, void *aux UNUSED);
 static int bound_nice (int nice);
 
-/* Inserts thread into correct queue based on priority. */
+/* Inserts thread into correct queue based on priority.
+   This function must be called with interrupts turned off.  */
 static void
 thread_insert_ready_list (struct list_elem *elem)
 {
@@ -117,7 +118,7 @@ thread_donate_priority (struct thread *from, struct thread *to)
 {
   int prev_priority = to->effective_priority;
   enum intr_level old_level = intr_disable ();
-  list_insert_ordered (&to->donated_priorities, 
+  list_insert_ordered (&to->priority_donors, 
                        &from->donation_elem,
                        compare_threads_by_priority,
                        NULL);
@@ -149,8 +150,8 @@ thread_update_effective_priority (struct thread *t)
 {
   enum intr_level old_level = intr_disable ();
 
-  int max_donated = list_empty (&t->donated_priorities) ? 0 :
-                    list_entry (list_front (&t->donated_priorities),
+  int max_donated = list_empty (&t->priority_donors) ? 0 :
+                    list_entry (list_front (&t->priority_donors),
                                 struct thread,
                                 donation_elem)->effective_priority;
 
@@ -167,17 +168,19 @@ yield_if_lower_priority (void)
 {
   int i = 0;
   struct thread *t = NULL;
+  enum intr_level old_level = intr_disable ();
+  
+  /* Find highest priority ready thread. */
   for (i = PRI_MAX; i >= PRI_MIN; i--)
-    {
-      if (!list_empty (ready_list + i - PRI_MIN))
-        {
-          t = list_entry (list_front (ready_list + i - PRI_MIN),
-                          struct thread,
-                          elem);
-          break;
-        }
+    if (!list_empty (ready_list + i - PRI_MIN))
+      {
+        t = list_entry (list_front (ready_list + i - PRI_MIN),
+                        struct thread,
+                        elem);
+        break;
+      }
 
-    }
+  intr_set_level (old_level);
 
   if (t == NULL)
     return;
@@ -742,7 +745,7 @@ init_thread (struct thread *t, const char *name, int priority)
     }
 
   t->magic = THREAD_MAGIC;
-  list_init (&t->donated_priorities);
+  list_init (&t->priority_donors);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

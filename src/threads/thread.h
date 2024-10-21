@@ -94,7 +94,7 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int base_priority;                  /* Base priority. */
     int effective_priority;             /* Effective priority. */
-    struct list donated_priorities;     /* List of threads that donated their 
+    struct list priority_donors;        /* List of threads that donated their 
                                            priority to this thread. */
     struct lock *waiting_for;           /* Pointer to lock thread
                                            is waiting for. */
