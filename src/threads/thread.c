@@ -115,6 +115,7 @@ compare_threads_by_priority (const struct list_elem *a_,
 void
 thread_donate_priority (struct thread *from, struct thread *to)
 {
+  int prev_priority = to->effective_priority;
   enum intr_level old_level = intr_disable ();
   list_insert_ordered (&to->donated_priorities, 
                        &from->donation_elem,
@@ -122,18 +123,21 @@ thread_donate_priority (struct thread *from, struct thread *to)
                        NULL);
 
   thread_update_effective_priority (to);
-  
-  /* Update donee thread position in ready_list. */
-  if (to->status == THREAD_READY)
+
+  if (prev_priority < to->effective_priority)
     {
-      list_remove (&to->elem);
-      thread_insert_ready_list (&to->elem);
-    }
-  /* Update donation made by 'to' thread. */
-  else if (to->waiting_for != NULL)
-    {
-      list_remove (&to->donation_elem);
-      thread_donate_priority (to, to->waiting_for->holder);
+      /* Update donee thread position in ready_list. */
+      if (to->status == THREAD_READY)
+        {
+          list_remove (&to->elem);
+          thread_insert_ready_list (&to->elem);
+        }
+      /* Update donation made by 'to' thread. */
+      else if (to->waiting_for != NULL)
+        {
+          list_remove (&to->donation_elem);
+          thread_donate_priority (to, to->waiting_for->holder);
+        }
     }
 
   intr_set_level (old_level);
