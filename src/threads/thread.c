@@ -77,7 +77,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-static void thread_insert_ready_list (struct list_elem *e, bool bsd);
+static void thread_insert_ready_list (struct list_elem *e);
 static bool compare_threads_by_priority (const struct list_elem *a_,
                                          const struct list_elem *b_,
                                          void *aux UNUSED);
@@ -89,23 +89,16 @@ static void thread_update_recent_cpu (struct thread *t, void *aux);
 static void threads_update_bsd_priority (void);
 static void thread_update_bsd_priority (struct thread *t, void *aux UNUSED);
 static int bound_nice (int nice);
-static bool bsd_compare_threads_by_priority (const struct list_elem *a_,
-                                             const struct list_elem *b_,
-                                             void *aux UNUSED);
 
 /* Inserts thread into correct queue based on priority. */
 static void
-thread_insert_ready_list (struct list_elem *elem, bool bsd)
+thread_insert_ready_list (struct list_elem *elem)
 {
   struct thread *t = list_entry (elem, struct thread, elem);
-  list_insert_ordered (ready_list + t->effective_priority - PRI_MIN,
-                       elem, 
-                       bsd ? bsd_compare_threads_by_priority
-                           : compare_threads_by_priority,
-                       NULL);
+  list_push_back (ready_list + t->effective_priority - PRI_MIN, elem);
 }
 
-/* Returns true if first thread has higher effective priority than second */
+/* Returns true if first thread has higher effective priority than second. */
 bool
 compare_threads_by_priority (const struct list_elem *a_,
                              const struct list_elem *b_,
@@ -115,19 +108,6 @@ compare_threads_by_priority (const struct list_elem *a_,
   struct thread *b = list_entry (b_, struct thread, elem);
   
   return a->effective_priority > b->effective_priority;
-}
-
-/* Returns true if first thread has higher or equal effective priority 
-   than second */
-bool
-bsd_compare_threads_by_priority (const struct list_elem *a_,
-                                 const struct list_elem *b_,
-                                 void *aux UNUSED)
-{
-  struct thread *a = list_entry (a_, struct thread, elem);
-  struct thread *b = list_entry (b_, struct thread, elem);
-  
-  return a->effective_priority >= b->effective_priority;
 }
 
 /* Donates the effective priority of current thread to thread t,
@@ -147,7 +127,7 @@ thread_donate_priority (struct thread *from, struct thread *to)
   if (to->status == THREAD_READY)
     {
       list_remove (&to->elem);
-      thread_insert_ready_list (&to->elem, false);
+      thread_insert_ready_list (&to->elem);
     }
   /* Update donation made by 'to' thread. */
   else if (to->waiting_for != NULL)
@@ -426,7 +406,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  thread_insert_ready_list (&t->elem, false);
+  thread_insert_ready_list (&t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -497,7 +477,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    thread_insert_ready_list (&cur->elem, false);
+    thread_insert_ready_list (&cur->elem);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -544,6 +524,8 @@ thread_get_priority (void)
 void
 thread_update_bsd_priority(struct thread *t, void *aux UNUSED)
 {
+  int prev_priority = t->effective_priority;
+
   fixed_point_t fp_primax = INT_TO_FP(PRI_MAX);
   int priority = FP_TO_INT_FLOOR(SUB_FP_INT(SUB_FP(fp_primax, 
     (DIV_FP_INT(t->recent_cpu, 4))), (t->nice * 2)));
@@ -556,11 +538,11 @@ thread_update_bsd_priority(struct thread *t, void *aux UNUSED)
   t->base_priority = priority;
   t->effective_priority = priority;
 
-  /* Adjust the position in ready_list according to the new priority. */
-  if (t->status == THREAD_READY)
+  /* If necessary, adjust thread position in ready_list. */
+  if (t->status == THREAD_READY && priority != prev_priority)
     {
       list_remove (&t->elem);
-      thread_insert_ready_list (&t->elem, true);
+      thread_insert_ready_list (&t->elem);
     }
 }
 
