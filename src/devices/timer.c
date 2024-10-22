@@ -29,6 +29,7 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+static void timer_wake_sleeping (void);
 
 /* List of semaphores associated with sleeping threads, sorted in 
    ascending order by waking time. */
@@ -41,6 +42,25 @@ struct sleep_elem
     int awake_ticks;          /* Tick count after which thread can awake */
     struct list_elem elem;    /* List element */
   };
+
+/* Wake threads which have slept for required period of time. */
+void
+timer_wake_sleeping (void)
+{
+  struct list_elem *e = list_begin (&sleep_list);
+  struct sleep_elem *entry;
+
+  while (e != list_end (&sleep_list)) 
+    {
+      entry = list_entry (e, struct sleep_elem, elem);
+            
+      if (entry->awake_ticks > ticks)
+        return;
+
+      sema_up (&entry->sema);
+      e = list_remove (e);
+    }
+}
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -120,10 +140,12 @@ timer_sleep (int64_t ticks)
 
   ASSERT (intr_get_level () == INTR_ON);
 
+  /* Initialise sleep_elem for thread. */
   struct sleep_elem sleep_elem;
   sema_init (&sleep_elem.sema, 0);
   sleep_elem.awake_ticks = start + ticks;
 
+  /* Insert sleep_elem for thread into sleep_list based on wake up time. */
   enum intr_level old_level = intr_disable ();
   list_insert_ordered (&sleep_list, &sleep_elem.elem,
                        compare_sleep_elems_by_ticks, NULL);
@@ -209,24 +231,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
-  struct list_elem *e = list_begin (&sleep_list);
-  struct sleep_elem *entry;
-  struct list_elem *next;
-
-  while (e != list_end (&sleep_list)) 
-    {
-      entry = list_entry (e, struct sleep_elem, elem);
-            
-      if (entry->awake_ticks > ticks)
-        return;
-
-      next = list_next (e);
-      
-      sema_up (&entry->sema);
-      list_remove (e);
-
-      e = next;
-    }
+  timer_wake_sleeping ();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

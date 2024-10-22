@@ -41,6 +41,8 @@ static bool compare_waiters_by_priority (const struct list_elem *a_,
                                          void *aux UNUSED);
 static void transfer_lock (struct lock *lock);
 
+/* Change holder of lock to current thread and transfer any existing
+   donations for lock. */
 static void
 transfer_lock (struct lock *lock)
 {
@@ -144,6 +146,7 @@ sema_up (struct semaphore *sema)
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) 
     {
+      /* Unblock waiting thread with highest priority. */
       struct list_elem *e = list_max (&sema->waiters,
                                       compare_waiters_by_priority,
                                       NULL);
@@ -156,6 +159,8 @@ sema_up (struct semaphore *sema)
 
   intr_set_level (old_level);
 
+  /* Since a higher-priority thread may have been unblocked,
+     yield if necessary. */
   yield_if_lower_priority (); 
 }
 
@@ -346,6 +351,7 @@ compare_cond_waiters_by_priority (const struct list_elem *a_,
   if (list_empty (b_waiters))
     return false;
 
+  /* Get priorities of threads on semaphore waiters list. */
   int a_priority = list_entry (list_front (a_waiters),
                                struct thread,
                                elem)->effective_priority;
@@ -433,6 +439,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
 
   if (!list_empty (&cond->waiters)) 
     {
+      /* Up semaphore with highest priority waiting thread. */
       struct list_elem *e = list_max (&cond->waiters,
                                       compare_cond_waiters_by_priority,
                                       NULL);

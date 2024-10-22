@@ -118,13 +118,15 @@ thread_donate_priority (struct thread *from, struct thread *to)
 {
   int prev_priority = to->effective_priority;
   enum intr_level old_level = intr_disable ();
+
+  /* Make 'from' thread priority donor to 'to' thread. */
   list_insert_ordered (&to->priority_donors, 
                        &from->donation_elem,
                        compare_threads_by_priority,
                        NULL);
-
   thread_update_effective_priority (to);
 
+  /* Check if effective priority has increased after donation. */
   if (prev_priority < to->effective_priority)
     {
       /* Update donee thread position in ready_list. */
@@ -150,11 +152,14 @@ thread_update_effective_priority (struct thread *t)
 {
   enum intr_level old_level = intr_disable ();
 
+  /* Determine value of highest donation to thread t. */
   int max_donated = list_empty (&t->priority_donors) ? 0 :
                     list_entry (list_front (&t->priority_donors),
                                 struct thread,
                                 donation_elem)->effective_priority;
 
+  /* Set effective_priority to maximum of base_priority 
+     and highest donation value. */
   t->effective_priority = t->base_priority > max_donated
                         ? t->base_priority
                         : max_donated;
@@ -166,11 +171,12 @@ thread_update_effective_priority (struct thread *t)
 void
 yield_if_lower_priority (void)
 {
-  int i = 0;
+  int i;
   struct thread *t = NULL;
   enum intr_level old_level = intr_disable ();
   
-  /* Find highest priority ready thread. */
+  /* Find highest priority ready thread by iterating over ready_list queues,
+     starting with highest priority level. */
   for (i = PRI_MAX; i >= PRI_MIN; i--)
     if (!list_empty (ready_list + i - PRI_MIN))
       {
@@ -182,10 +188,8 @@ yield_if_lower_priority (void)
 
   intr_set_level (old_level);
 
-  if (t == NULL)
-    return;
-
-  if (thread_get_priority () < t->effective_priority)
+  /* If there is a higher priority ready thread, yield as soon as possible. */
+  if (t != NULL && thread_get_priority () < t->effective_priority)
     {
       if (intr_context ())
         intr_yield_on_return ();
@@ -251,10 +255,14 @@ size_t
 threads_ready (void)
 {
   enum intr_level old_level = intr_disable ();
-  int i = 0;
+
+  int i;
   size_t ready_thread_count = 0;
+  
+  /* Iterate over ready_list queues to determine number of ready threads. */
   for (i = PRI_MIN; i <= PRI_MAX; i++)
     ready_thread_count += list_size (ready_list + i - PRI_MIN); 
+
   intr_set_level (old_level);
   return ready_thread_count;
 }
@@ -537,6 +545,7 @@ thread_update_bsd_priority(struct thread *t, void *aux UNUSED)
   int priority = FP_TO_INT_FLOOR(SUB_FP_INT(SUB_FP(fp_primax, 
     (DIV_FP_INT(t->recent_cpu, 4))), (t->nice * 2)));
 
+  /* Bound priority between PRI_MIN and PRI_MAX (inclusive). */
   if (priority > PRI_MAX) 
     priority = PRI_MAX;
   else if (priority < PRI_MIN) 
@@ -592,6 +601,7 @@ thread_get_nice (void)
   return thread_current ()->nice;
 }
 
+/* Update system-wide load_avg value. */
 void
 update_load_avg (void)
 {
@@ -610,6 +620,7 @@ thread_get_load_avg (void)
   return FP_TO_INT_ROUND(MUL_FP_INT(load_avg, 100));
 }
 
+/* Update recent_cpu value for thread t. */
 void
 thread_update_recent_cpu (struct thread *t, void *aux)
 {
