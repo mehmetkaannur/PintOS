@@ -43,6 +43,7 @@ struct sleep_elem
     struct list_elem elem;    /* List element */
   };
 
+/* Wake threads which have slept for required period of time. */
 void
 timer_wake_sleeping (void)
 {
@@ -139,10 +140,12 @@ timer_sleep (int64_t ticks)
 
   ASSERT (intr_get_level () == INTR_ON);
 
+  /* Initialise sleep_elem for thread. */
   struct sleep_elem sleep_elem;
   sema_init (&sleep_elem.sema, 0);
   sleep_elem.awake_ticks = start + ticks;
 
+  /* Insert sleep_elem for thread into sleep_list based on wake up time. */
   enum intr_level old_level = intr_disable ();
   list_insert_ordered (&sleep_list, &sleep_elem.elem,
                        compare_sleep_elems_by_ticks, NULL);
