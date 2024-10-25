@@ -78,9 +78,6 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 static void thread_insert_ready_list (struct list_elem *e);
-static bool compare_threads_by_priority (const struct list_elem *a_,
-                                         const struct list_elem *b_,
-                                         void *aux UNUSED);
 
 /* Functions for advanced scheduler. */
 static void update_load_avg (void);
@@ -99,64 +96,33 @@ thread_insert_ready_list (struct list_elem *elem)
   list_push_back (ready_list + t->effective_priority - PRI_MIN, elem);
 }
 
-/* Returns true if first thread has higher effective priority than second. */
-bool
-compare_threads_by_priority (const struct list_elem *a_,
-                             const struct list_elem *b_,
-                             void *aux UNUSED)
-{
-  struct thread *a = list_entry (a_, struct thread, elem);
-  struct thread *b = list_entry (b_, struct thread, elem);
-  
-  return a->effective_priority > b->effective_priority;
-}
-
-/* Donates the effective priority of current thread to thread t,
-   to be expired when lock l is released. */
-void
-thread_donate_priority (struct thread *from, struct thread *to)
-{
-  int prev_priority = to->effective_priority;
-  enum intr_level old_level = intr_disable ();
-
-  /* Make 'from' thread priority donor to 'to' thread. */
-  list_insert_ordered (&to->priority_donors, 
-                       &from->donation_elem,
-                       compare_threads_by_priority,
-                       NULL);
-  thread_update_effective_priority (to);
-
-  /* Check if effective priority has increased after donation. */
-  if (prev_priority < to->effective_priority)
-    {
-      /* Update donee thread position in ready_list. */
-      if (to->status == THREAD_READY)
-        {
-          list_remove (&to->elem);
-          thread_insert_ready_list (&to->elem);
-        }
-      /* Update donation made by 'to' thread. */
-      else if (to->waiting_for != NULL)
-        {
-          list_remove (&to->donation_elem);
-          thread_donate_priority (to, to->waiting_for->holder);
-        }
-    }
-
-  intr_set_level (old_level);
-}
-
 /* Updates the effective priority of a given thread. */
 void
 thread_update_effective_priority (struct thread *t)
 {
+  int prev_priority = t->effective_priority;
+
   enum intr_level old_level = intr_disable ();
 
   /* Determine value of highest donation to thread t. */
-  int max_donated = list_empty (&t->priority_donors) ? 0 :
-                    list_entry (list_front (&t->priority_donors),
-                                struct thread,
-                                donation_elem)->effective_priority;
+  int max_donated = 0;
+  int donation;
+  struct list_elem *e, *max;
+  struct thread *waiter;
+  struct lock *lock;
+  for (e = list_begin (&t->locks);
+       e != list_end (&t->locks);
+       e = list_next (e))
+    {
+      lock = list_entry (e, struct lock, elem);
+      max = list_max (&lock->semaphore.waiters,
+                      compare_waiters_by_priority,
+                      NULL);
+      waiter = list_entry (max, struct thread, elem);
+      donation = waiter->effective_priority;
+      if (donation > max_donated)
+        max_donated = donation;
+    }
 
   /* Set effective_priority to maximum of base_priority 
      and highest donation value. */
@@ -164,6 +130,20 @@ thread_update_effective_priority (struct thread *t)
                         ? t->base_priority
                         : max_donated;
 
+  /* Check if effective priority has increased after donation. */
+  if (prev_priority < t->effective_priority)
+    {
+      /* Update thread position in ready_list. */
+      if (t->status == THREAD_READY)
+        {
+          list_remove (&t->elem);
+          thread_insert_ready_list (&t->elem);
+        }
+      /* Cascade donation. */
+      else if (t->waiting_for != NULL)
+        thread_update_effective_priority (t->waiting_for->holder);
+    }
+    
   intr_set_level (old_level);
 }
 
@@ -757,7 +737,7 @@ init_thread (struct thread *t, const char *name, int priority)
     }
 
   t->magic = THREAD_MAGIC;
-  list_init (&t->priority_donors);
+  list_init (&t->locks);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
