@@ -632,8 +632,9 @@ thread_update_recent_cpu (struct thread *t, void *aux)
 void
 threads_update_recent_cpu ()
 {
-  fixed_point_t coeff = DIV_FP(MUL_FP_INT(load_avg, 2), 
-    ADD_FP_INT(MUL_FP_INT(load_avg, 2), 1));
+  fixed_point_t doubled_load_avg = MUL_FP_INT (load_avg, 2);
+  fixed_point_t coeff = DIV_FP (doubled_load_avg, 
+                        ADD_FP_INT (doubled_load_avg, 1));
   thread_foreach (thread_update_recent_cpu, &coeff);
 }
 
