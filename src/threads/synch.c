@@ -38,18 +38,15 @@ static bool compare_cond_waiters_by_priority (const struct list_elem *a_,
                                               void *aux UNUSED);
 static void transfer_lock (struct lock *lock);
 
-/* Change holder of lock to current thread and transfer any existing
-   donations for lock. */
+/* Change holder of lock to current thread and update its priority. */
 static void
 transfer_lock (struct lock *lock)
 {
-  enum intr_level old_level = intr_disable ();
-
-  lock->holder = thread_current ();
   thread_current ()->waiting_lock = NULL;
+  lock->holder = thread_current ();
 
+  enum intr_level old_level = intr_disable ();
   list_push_back (&thread_current ()->locks, &lock->elem);
-
   intr_set_level (old_level);
   
   thread_update_effective_priority (thread_current ());  
@@ -88,8 +85,8 @@ sema_down (struct semaphore *sema)
   ASSERT (sema != NULL);
   ASSERT (!intr_context ());
 
-  old_level = intr_disable ();
   struct thread *t = thread_current ();
+  old_level = intr_disable ();
   while (sema->value == 0) 
     {
       /* Maintain ordering of semaphore waiter list by descending priority. */
