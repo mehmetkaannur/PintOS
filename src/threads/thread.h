@@ -94,16 +94,14 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int base_priority;                  /* Base priority. */
     int effective_priority;             /* Effective priority. */
-    struct list priority_donors;        /* List of threads that donated their 
-                                           priority to this thread. */
-    struct lock *waiting_for;           /* Pointer to lock thread
+    struct semaphore *waiting_sema;     /* Pointer to semaphore thread
+                                           is waiting for. */
+    struct lock *waiting_lock;          /* Pointer to lock thread
                                            is waiting for. */
     int nice;                           /* Thread's nice value. */
     int recent_cpu;                     /* Time spent in CPU recently. */
     struct list_elem allelem;           /* List element for all threads list. */
-    struct list_elem donation_elem;     /* List element for priority 
-                                           donation list. */
-
+    struct list locks;                  /* List of locks held. */
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
@@ -121,7 +119,6 @@ struct thread
    Controlled by kernel command-line option "mlfqs". */
 extern bool thread_mlfqs;
 
-void thread_donate_priority (struct thread *from, struct thread *to);
 void yield_if_lower_priority (void);
 
 void thread_init (void);
