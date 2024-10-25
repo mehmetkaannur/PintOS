@@ -291,17 +291,13 @@ lock_release (struct lock *lock)
   
   struct thread *t = thread_current ();
   struct list_elem *e = list_begin (&t->priority_donors);
-  struct list_elem *next;
   struct thread *entry;
   
   /* Remove donations associated with this lock. */
   while (e != list_end (&t->priority_donors))
     {
       entry = list_entry (e, struct thread, donation_elem);
-      next = list_next (e);
-      if (entry->waiting_for == lock)
-        list_remove (e);
-      e = next;
+      e = (entry->waiting_for == lock) ? list_remove (e) : list_next (e);
     }
 
   thread_update_effective_priority (thread_current ());
