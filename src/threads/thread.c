@@ -92,9 +92,13 @@ static int bound_nice (int nice);
 static void
 thread_insert_ready_list (struct list_elem *elem)
 {
+  ASSERT (intr_get_level () == INTR_OFF);
+  
   struct thread *t = list_entry (elem, struct thread, elem);
   list_push_back (ready_list + t->effective_priority - PRI_MIN, elem);
 }
+
+
 
 /* Updates the effective priority of a given thread. */
 void
@@ -108,7 +112,6 @@ thread_update_effective_priority (struct thread *t)
   int max_donated = 0;
   int donation;
   struct list_elem *e;
-  struct thread *waiter;
   struct lock *lock;
   for (e = list_begin (&t->locks);
        e != list_end (&t->locks);
@@ -141,7 +144,7 @@ thread_update_effective_priority (struct thread *t)
           thread_insert_ready_list (&t->elem);
         }
       /* Cascade donation. */
-      else if (t->waiting_lock != NULL)
+      else if (t->waiting_lock != NULL && t->waiting_lock->holder != NULL)
         thread_update_effective_priority (t->waiting_lock->holder);
       
       /* Update position in semaphore waiter list. */
