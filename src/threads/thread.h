@@ -94,7 +94,9 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int base_priority;                  /* Base priority. */
     int effective_priority;             /* Effective priority. */
-    struct lock *waiting_for;           /* Pointer to lock thread
+    struct semaphore *waiting_sema;     /* Pointer to semaphore thread
+                                           is waiting for. */
+    struct lock *waiting_lock;          /* Pointer to lock thread
                                            is waiting for. */
     int nice;                           /* Thread's nice value. */
     int recent_cpu;                     /* Time spent in CPU recently. */

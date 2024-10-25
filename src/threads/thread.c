@@ -107,7 +107,7 @@ thread_update_effective_priority (struct thread *t)
   /* Determine value of highest donation to thread t. */
   int max_donated = 0;
   int donation;
-  struct list_elem *e, *max;
+  struct list_elem *e;
   struct thread *waiter;
   struct lock *lock;
   for (e = list_begin (&t->locks);
@@ -115,13 +115,14 @@ thread_update_effective_priority (struct thread *t)
        e = list_next (e))
     {
       lock = list_entry (e, struct lock, elem);
-      max = list_max (&lock->semaphore.waiters,
-                      compare_waiters_by_priority,
-                      NULL);
-      waiter = list_entry (max, struct thread, elem);
-      donation = waiter->effective_priority;
-      if (donation > max_donated)
-        max_donated = donation;
+      if (!list_empty (&lock->semaphore.waiters))
+        {
+          donation = list_entry (list_front (&lock->semaphore.waiters),
+                                 struct thread,
+                                 elem)->effective_priority;
+          if (donation > max_donated)
+            max_donated = donation;
+        }
     }
 
   /* Set effective_priority to maximum of base_priority 
@@ -140,8 +141,16 @@ thread_update_effective_priority (struct thread *t)
           thread_insert_ready_list (&t->elem);
         }
       /* Cascade donation. */
-      else if (t->waiting_for != NULL)
-        thread_update_effective_priority (t->waiting_for->holder);
+      else if (t->waiting_lock != NULL)
+        thread_update_effective_priority (t->waiting_lock->holder);
+      
+      /* Update position in semaphore waiter list. */
+      if (t->waiting_sema != NULL)
+        {
+          list_remove (&t->elem);
+          list_insert_ordered (&t->waiting_sema->waiters, &t->elem,
+                               compare_waiters_by_priority, NULL);
+        }
     }
     
   intr_set_level (old_level);
@@ -736,6 +745,8 @@ init_thread (struct thread *t, const char *name, int priority)
       t->effective_priority = priority;
     }
 
+  t->waiting_sema = NULL;
+  t->waiting_lock = NULL;
   t->magic = THREAD_MAGIC;
   list_init (&t->locks);
 
