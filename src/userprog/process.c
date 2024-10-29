@@ -30,22 +30,22 @@ static void setup_stack_args (int argc, char *argv[], void **esp);
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
+process_execute (const char *command) 
 {
-  char *fn_copy;
+  char *cmd_copy;
   tid_t tid;
 
-  /* Make a copy of FILE_NAME.
+  /* Make a copy of command.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
+  cmd_copy = palloc_get_page (0);
+  if (cmd_copy == NULL)
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
+  strlcpy (cmd_copy, command, PGSIZE);
 
-  /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  /* Create a new thread to execute command. */
+  tid = thread_create (command, PRI_DEFAULT, start_process, cmd_copy);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    palloc_free_page (cmd_copy); 
   return tid;
 }
 
@@ -53,7 +53,7 @@ process_execute (const char *file_name)
 static void
 setup_stack_args (int argc, char *argv[], void **sp_)
 {
-  char **argvp[argc];
+  char *argvp[argc];
   char **sp = (char **) sp_;
   size_t arglen;
 
@@ -65,30 +65,35 @@ setup_stack_args (int argc, char *argv[], void **sp_)
       *sp -= arglen;
 
       strlcpy (*sp, argv[i], arglen);
-      argvp[i] = (char **) *sp;
+      argvp[i] = *sp;
     }
   
   /* Round stack pointer to multiple of 4 for word alignment. */
   *sp = (void *) ((uintptr_t)(*sp) & ~(uintptr_t) 3);
 
+  /* Add null pointer to stack. */
   *sp -= sizeof (char *);
-  **sp = NULL;
+  memset (*sp, 0, sizeof (char *));
 
+  /* Add addresses of arguments to stack in right to left order. */
   for (int i = argc - 1; i >= 0; i--)
     {
       *sp -= sizeof (char *);
-      **sp = argvp[i];
+      memcpy (*sp, &argvp[i], sizeof (char *));
     }
 
+  /* Add address of array of argument addresses to stack. */
+  char **stack_argvp = (char **) *sp;
   *sp -= sizeof (char *);
-  **sp = *sp + sizeof (char *);
+  memcpy (*sp, &stack_argvp, sizeof (char **));
 
+  /* Add argc value to stack. */
   *sp -= sizeof (int);
-  **sp = argc;
+  memcpy (*sp, &argc, sizeof (int));
 
   /* Add fake return address to stack. */
   *sp -= sizeof (void *);
-  **sp = NULL;
+  memset (*sp, 0, sizeof (void *));
 }
 
 /* A thread function that loads a user process and starts it
@@ -123,6 +128,8 @@ start_process (void *command_)
   /* Setup stack with arguments. */
   setup_stack_args (argc, argv, &if_.esp);
 
+  hex_dump ((uintptr_t) if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
+  
   /* If load failed, quit. */
   palloc_free_page (command);
   if (!success) 
