@@ -118,16 +118,6 @@ pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
     return false;
 }
 
-/* Checks if the pointer given by the user is a valid pointer. */
-#ifdef USERPROG
-static bool
-is_valid_user_pointer (const void *uaddr)
-{
-  struct thread *t = thread_current ();
-  return is_user_vaddr (uaddr) && pagedir_get_page (t->pagedir, uaddr) != NULL;
-}
-#endif
-
 /* Looks up the physical address that corresponds to user virtual
    address UADDR in PD.  Returns the kernel virtual address
    corresponding to that physical address, or a null pointer if
