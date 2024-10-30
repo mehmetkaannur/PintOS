@@ -97,15 +97,14 @@ syscall_handler (struct intr_frame *f)
 
   for (int i = 0; i < info.argc; i++) 
     {
-      argv[i] = (void *) *((int *) f->esp + i + 1);
-      if (!is_valid_user_pointer (argv[i])) 
+      if (!is_valid_user_pointer ((int *) f->esp + i + 1)) 
         {
           thread_exit ();
         }
+      argv[i] = (void *) *((int *) f->esp + i + 1);
     }
 
   int res = (int) info.f (argv);
-
   if (info.has_result) 
     {
       f->eax = res;
