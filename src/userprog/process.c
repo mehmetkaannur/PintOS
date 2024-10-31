@@ -128,8 +128,6 @@ start_process (void *command_)
   /* Setup stack with arguments. */
   setup_stack_args (argc, argv, &if_.esp);
 
-  hex_dump ((uintptr_t) if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
-  
   /* If load failed, quit. */
   palloc_free_page (command);
   if (!success) 

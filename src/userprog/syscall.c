@@ -65,14 +65,18 @@ static struct syscall_info syscall_table[] = {
   [SYS_INUMBER] = { 1, true, (syscall_func_t) sys_inumber }
 };
 
-/* Checks if the pointer given by the user is a valid pointer. */
+/* Checks if the pointer given by the user is a valid pointer
+   and terminates user process if not. */
 #ifdef USERPROG
-static bool
-is_valid_user_pointer (const void *uaddr)
+static void
+validate_user_pointer (const void *uaddr)
 {
   struct thread *t = thread_current ();
-  return is_user_vaddr (uaddr) && 
-         pagedir_get_page (t->pagedir, uaddr) != NULL;
+  if (!(is_user_vaddr (uaddr) && 
+        pagedir_get_page (t->pagedir, uaddr) != NULL))
+    {
+      thread_exit ();
+    }
 }
 #endif
 
@@ -85,27 +89,21 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f) 
 {
-  if (!is_valid_user_pointer (f->esp)) 
-    {
-      thread_exit();
-    }
-
+  /* Get info for handling syscall based on syscall_number. */
+  validate_user_pointer (f->esp);
   int syscall_number = *(int *) f->esp;
   struct syscall_info info = syscall_table[syscall_number];
 
+  /* Get arguments for syscall function from stack. */
   void *argv[info.argc];
-
   for (int i = 0; i < info.argc; i++) 
     {
+      validate_user_pointer ((int *) f->esp + i + 1); 
       argv[i] = (void *) *((int *) f->esp + i + 1);
-      if (!is_valid_user_pointer (argv[i])) 
-        {
-          thread_exit ();
-        }
     }
 
+  /* Store result of function if any in eax field. */
   int res = (int) info.f (argv);
-
   if (info.has_result) 
     {
       f->eax = res;
