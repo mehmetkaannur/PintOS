@@ -7,6 +7,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#define CONSOLE_BUFFER_SIZE 100
+
 /* Functions to handle syscalls. */
 static void sys_halt (void *argv[] UNUSED);
 static void sys_exit (void *argv[]);
@@ -120,6 +122,8 @@ static void
 sys_exit (void *argv[])
 {
   int status = (int) argv[0];
+
+  thread_exit ();
 }
 
 static pid_t
@@ -180,6 +184,19 @@ sys_write (void *argv[])
   int fd = (int) argv[0];
   const void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
+  
+  if (fd == 1)
+    {
+      /* Write to console, CONSOLE_BUFFER_SIZE chars at a time. */
+      unsigned i;
+      for (i = 0; i + CONSOLE_BUFFER_SIZE <= size; i += CONSOLE_BUFFER_SIZE)
+        {
+          putbuf ((char *) buffer + i, CONSOLE_BUFFER_SIZE);
+        }
+      putbuf (buffer + i, size - i);
+
+      return size;
+    }
 
   return 0;
 }
