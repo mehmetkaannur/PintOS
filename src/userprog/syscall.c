@@ -7,6 +7,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#define CONSOLE_BUFFER_SIZE 100
+
 /* Functions to handle syscalls. */
 static void sys_halt (void *argv[] UNUSED);
 static void sys_exit (void *argv[]);
@@ -119,7 +121,13 @@ sys_halt (void *argv[] UNUSED)
 static void
 sys_exit (void *argv[])
 {
-  int status = *(int *) argv[0];
+  int status = (int) argv[0];
+  printf("%s: exit(%d)\n", thread_current()->name, status);
+
+  // thread_current()->exit_status = status;
+  // what does it mean to send exit status to kernel?
+
+  thread_exit ();
 }
 
 static pid_t
@@ -132,7 +140,7 @@ sys_exec (void *argv[])
 static int
 sys_wait (void *argv[])
 {
-  int pid = *(int *) argv[0];
+  int pid = (int) argv[0];
   return 0;
 }
 
@@ -140,7 +148,7 @@ static bool
 sys_create (void *argv[])
 {
   const char *file = (const char *) argv[0];
-  unsigned initial_size = *(unsigned *) argv[1];
+  unsigned initial_size = (unsigned) argv[1];
   return false;
 }
 
@@ -161,52 +169,66 @@ sys_open (void *argv[])
 static int
 sys_filesize (void *argv[])
 {
-  int fd = *(int *) argv[0];
+  int fd = (int) argv[0];
   return 0;
 }
 
 static int
 sys_read (void *argv[])
 {
-  int fd = *(int *) argv[0];
+  int fd = (int) argv[0];
   void *buffer = argv[1];
-  unsigned size = *(unsigned *) argv[2];
+  unsigned size = (unsigned) argv[2];
   return 0;
 }
 
 static int
 sys_write (void *argv[])
 {
-  int fd = *(int *) argv[0];
+  int fd = (int) argv[0];
   const void *buffer = argv[1];
-  unsigned size = *(unsigned *) argv[2];
+  unsigned size = (unsigned) argv[2];
+  
+  if (fd == 1)
+    {
+      /* Write to console, CONSOLE_BUFFER_SIZE chars at a time. */
+      unsigned i;
+      for (i = 0; i + CONSOLE_BUFFER_SIZE <= size; i += CONSOLE_BUFFER_SIZE)
+        {
+          putbuf ((char *) buffer + i, CONSOLE_BUFFER_SIZE);
+        }
+      putbuf (buffer + i, size - i);
+
+      return size;
+    }
+
   return 0;
 }
 
 static void
 sys_seek (void *argv[])
 {
-  int fd = *(int *) argv[0];
-  unsigned position = *(unsigned *) argv[1];
+  int fd = (int) argv[0];
+  unsigned position = (unsigned) argv[1];
 }
 
 static unsigned
 sys_tell (void *argv[])
 {
-  int fd = *(int *) argv[0];
+  int fd = (int) argv[0];
   return 0;
 }
 
 static void
 sys_close (void *argv[])
 {
-  int fd = *(int *) argv[0];
+  int fd = (int) argv[0];
 }
 
 static mapid_t
 sys_mmap (void *argv[])
 {
-  int fd = *(int *) argv[0];
+  int fd = (int) argv[0];
   void *addr = argv[1];
   return 0;
 }
@@ -214,7 +236,7 @@ sys_mmap (void *argv[])
 static void
 sys_munmap (void *argv[])
 {
-  int mapid = *(int *) argv[0];
+  int mapid = (int) argv[0];
 }
 
 static bool
@@ -234,7 +256,7 @@ sys_mkdir (void *argv[])
 static bool
 sys_readdir (void *argv[])
 {
-  int fd = *(int *) argv[0];
+  int fd = (int) argv[0];
   char *name = (char *) argv[1];
   return false;
 }
@@ -242,13 +264,13 @@ sys_readdir (void *argv[])
 static bool
 sys_isdir (void *argv[])
 {
-  int fd = *(int *) argv[0];
+  int fd = (int) argv[0];
   return false;
 }
 
 static int
 sys_inumber (void *argv[])
 {
-  int fd = *(int *) argv[0];
+  int fd = (int) argv[0];
   return 0;
 }

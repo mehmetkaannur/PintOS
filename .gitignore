@@ -25,3 +25,5 @@
 *.toc
 
 .gitconfig
+
+.vscode/
