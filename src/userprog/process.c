@@ -25,6 +25,12 @@ static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void setup_stack_args (int argc, char *argv[], void **esp);
 
+struct process_args
+  {
+    char **argv;
+    int argc;
+  };
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -42,8 +48,23 @@ process_execute (const char *command)
     return TID_ERROR;
   strlcpy (cmd_copy, command, PGSIZE);
 
+  char *sep = " ";
+  char *arg, *last;
+  int argc = 0;
+  char *argv[MAX_ARGS];
+
+  /* Tokenise command string into file name and arguments. */
+  for (arg = strtok_r (cmd_copy, sep, &last);
+       arg;
+       arg = strtok_r (NULL, sep, &last))
+    {
+      argv[argc] = arg;
+      argc++;
+    }
+
   /* Create a new thread to execute command. */
-  tid = thread_create (command, PRI_DEFAULT, start_process, cmd_copy);
+  struct process_args args = { argv, argc };
+  tid = thread_create (argv[0], PRI_DEFAULT, start_process, &args);
   if (tid == TID_ERROR)
     palloc_free_page (cmd_copy); 
   return tid;
@@ -99,37 +120,24 @@ setup_stack_args (int argc, char *argv[], void **sp_)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *command_)
+start_process (void *args_)
 {
-  char *command = command_;
+  struct process_args *args = (struct process_args *) args_;
   struct intr_frame if_;
   bool success;
-
-  char *sep = " ";
-  char *arg, *last;
-  int argc = 0;
-  char *argv[MAX_ARGS];
-
-  for (arg = strtok_r (command, sep, &last);
-       arg;
-       arg = strtok_r (NULL, sep, &last))
-    {
-      argv[argc] = arg;
-      argc++;
-    }
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (argv[0], &if_.eip, &if_.esp);
+  success = load (args->argv[0], &if_.eip, &if_.esp);
 
   /* Setup stack with arguments. */
-  setup_stack_args (argc, argv, &if_.esp);
+  setup_stack_args (args->argc, args->argv, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (command);
+  palloc_free_page (args->argv[0]);
   if (!success) 
     thread_exit ();
 
