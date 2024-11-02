@@ -122,6 +122,10 @@ static void
 sys_exit (void *argv[])
 {
   int status = (int) argv[0];
+  printf("%s: exit(%d)\n", thread_current()->name, status);
+
+  // thread_current()->exit_status = status;
+  // what does it mean to send exit status to kernel?
 
   thread_exit ();
 }
