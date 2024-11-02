@@ -18,8 +18,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-#define MAX_ARGS 10
 #define MAX_ARG_SIZE 30
+#define MAX_ARGS (PGSIZE / MAX_ARG_SIZE)
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -157,6 +157,16 @@ process_wait (tid_t child_tid UNUSED)
 {
   /* Temporary infinite loop. */
   for (;;) {}
+
+  /* If TID not in hashmap return -1. */
+
+  /* Get entry in hashmap for thread TID. (thread struct ? - no bc page is freed) */
+
+  /* If  entry->parent_pid != current pid or entry->process_wait_success, return -1*/
+
+  /* sema_down (entry->semaphore). */
+
+  /* return exit status */
 
   return -1;
 }
