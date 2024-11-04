@@ -4,6 +4,8 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "hash.h"
+#include "process.h"
 
 typedef int32_t fixed_point_t;
 
@@ -104,6 +106,7 @@ struct thread
     struct list locks;                  /* List of locks held. */
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+    struct hash_elem hash_elem;         /* Hash element for thread_map. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

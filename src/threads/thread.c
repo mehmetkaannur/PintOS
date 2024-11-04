@@ -87,6 +87,30 @@ static void threads_update_bsd_priority (void);
 static void thread_update_bsd_priority (struct thread *t, void *aux UNUSED);
 static int bound_nice (int nice);
 
+static hash_hash_func hash_thread;
+static hash_less_func less_thread; 
+
+/* Map from tid to thread. */
+struct hash thread_map;
+
+/* Hash function for thread hash element. */
+static unsigned
+hash_thread (const struct hash_elem *e, void *aux UNUSED)
+{
+  const struct thread *t = hash_entry (e, struct thread, hash_elem);
+  return hash_int ((int) t->tid);
+}
+
+/* Less function for thread hash elements. */
+static bool
+less_thread (const struct hash_elem *a, const struct hash_elem *b,
+             void *aux UNUSED)
+{
+  const struct thread *ta = hash_entry (a, struct thread, hash_elem);
+  const struct thread *tb = hash_entry (b, struct thread, hash_elem);
+  return ta->tid < tb->tid;
+}
+
 /* Inserts thread into correct queue based on priority.
    This function must be called with interrupts turned off.  */
 static void
@@ -219,6 +243,8 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+
+  hash_init (&thread_map, hash_thread, less_thread, NULL);
 
   /* Initialize load average to 0. */
   load_avg = INT_TO_FP(0);
@@ -371,6 +397,8 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   intr_set_level (old_level);
+
+  hash_insert (&thread_map, &t->hash_elem);
 
   /* Add to run queue. */
   thread_unblock (t);
