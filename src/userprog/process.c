@@ -28,12 +28,25 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void setup_stack_args (int argc, char *argv[], void **esp);
+static hash_action_func child_info_destroy;
 
 struct process_args
   {
     char **argv;
     int argc;
   };
+
+/* Destroys child_info struct. */
+static void
+child_info_destroy (struct hash_elem *e, void *aux UNUSED)
+{
+  struct child_info *i = hash_entry (e, struct child_info, elem);
+  if (i->child != NULL)
+    {
+      i->child->child_info = NULL;
+    }
+  free (i);
+}
 
 /* Hash function for child_info struct. */
 unsigned
@@ -214,6 +227,8 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  hash_destroy (&cur->children_map, child_info_destroy);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
