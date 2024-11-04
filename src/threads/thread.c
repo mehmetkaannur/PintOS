@@ -244,8 +244,6 @@ thread_init (void)
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 
-  hash_init (&thread_map, hash_thread, less_thread, NULL);
-
   /* Initialize load average to 0. */
   load_avg = INT_TO_FP(0);
 }
@@ -262,6 +260,8 @@ thread_start (void)
 
   /* Start preemptive thread scheduling. */
   intr_enable ();
+
+  hash_init (&thread_map, hash_thread, less_thread, NULL);
 
   /* Wait for the idle thread to initialize idle_thread. */
   sema_down (&idle_started);

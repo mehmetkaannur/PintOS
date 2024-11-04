@@ -1,6 +1,7 @@
 #include <user/syscall.h>
 #include "userprog/pagedir.h"
 #include "userprog/syscall.h"
+#include "userprog/process.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
@@ -124,8 +125,11 @@ sys_exit (void *argv[])
   int status = (int) argv[0];
   printf("%s: exit(%d)\n", thread_current()->name, status);
 
-  // thread_current()->exit_status = status;
-  // what does it mean to send exit status to kernel?
+  struct thread *cur = thread_current ();
+  if (cur->child_info != NULL)
+    {
+      cur->child_info->status = status;
+    }
 
   thread_exit ();
 }

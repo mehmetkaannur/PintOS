@@ -103,6 +103,12 @@ process_execute (const char *command)
 
   /* Initialise child info struct. */
   struct child_info *i = malloc (sizeof (struct child_info));
+
+  if (i == NULL)
+    {
+      return TID_ERROR;
+    }
+
   sema_init (&i->sema, 0);
   i->status = -1;
   i->child_pid = (pid_t) tid;
@@ -215,10 +221,24 @@ start_process (void *args_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  /* Temporary infinite loop. */
-  for (;;) {}
+  struct child_info i;
+  i.child_pid = (pid_t) child_tid;
+  struct hash_elem *e = hash_find (&thread_current ()->children_map, &i.elem);
 
-  return -1;
+  /* Current thread does not have child to wait for with tid child_tid. */
+  if (e == NULL)
+    {
+      return -1;
+    }
+
+  struct child_info *child_info = hash_entry (e, struct child_info, elem);
+  /* Wait for child to exit. */
+  sema_down (&child_info->sema);
+
+  /* Remove child_info from parent's hashmap as waiting only allowed once. */
+  hash_delete (&thread_current ()->children_map, &child_info->elem);
+
+  return child_info->status;
 }
 
 /* Free the current process's resources. */
@@ -229,6 +249,11 @@ process_exit (void)
   uint32_t *pd;
 
   hash_destroy (&cur->children_map, child_info_destroy);
+
+  if (cur->child_info != NULL)
+    {
+      sema_up (&cur->child_info->sema);
+    }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
