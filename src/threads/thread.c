@@ -87,6 +87,30 @@ static void threads_update_bsd_priority (void);
 static void thread_update_bsd_priority (struct thread *t, void *aux UNUSED);
 static int bound_nice (int nice);
 
+static hash_hash_func hash_thread;
+static hash_less_func less_thread; 
+
+/* Map from tid to thread. */
+struct hash thread_map;
+
+/* Hash function for thread hash element. */
+static unsigned
+hash_thread (const struct hash_elem *e, void *aux UNUSED)
+{
+  const struct thread *t = hash_entry (e, struct thread, hash_elem);
+  return hash_int ((int) t->tid);
+}
+
+/* Less function for thread hash elements. */
+static bool
+less_thread (const struct hash_elem *a, const struct hash_elem *b,
+             void *aux UNUSED)
+{
+  const struct thread *ta = hash_entry (a, struct thread, hash_elem);
+  const struct thread *tb = hash_entry (b, struct thread, hash_elem);
+  return ta->tid < tb->tid;
+}
+
 /* Inserts thread into correct queue based on priority.
    This function must be called with interrupts turned off.  */
 static void
@@ -229,10 +253,22 @@ thread_init (void)
 void
 thread_start (void) 
 {
+  /* Initialise thread_map. */
+  hash_init (&thread_map, hash_thread, less_thread, NULL);
+
   /* Create the idle thread. */
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
   thread_create ("idle", PRI_MIN, idle, &idle_started);
+
+  /* We assume that this function is only called once ever 
+     and that is by the main thread after malloc has been initialised.
+     Since the main thread is not created using thread_create,
+     we need to initialise its children map and do so here. */
+  hash_init (&thread_current ()->children_map,
+             hash_child_info,
+             less_child_info,
+             NULL);
 
   /* Start preemptive thread scheduling. */
   intr_enable ();
@@ -348,6 +384,8 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
+  hash_init (&t->children_map, hash_child_info, less_child_info, NULL);
+
   tid = t->tid = allocate_tid ();
 
   /* Prepare thread for first run by initializing its stack.
@@ -371,6 +409,8 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   intr_set_level (old_level);
+
+  hash_insert (&thread_map, &t->hash_elem);
 
   /* Add to run queue. */
   thread_unblock (t);

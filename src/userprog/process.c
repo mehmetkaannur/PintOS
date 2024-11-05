@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <user/syscall.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
@@ -17,6 +18,9 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
+#include "threads/malloc.h"
+#include "hash.h"
 
 #define MAX_ARG_SIZE 30
 #define MAX_ARGS (PGSIZE / MAX_ARG_SIZE)
@@ -24,12 +28,46 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void setup_stack_args (int argc, char *argv[], void **esp);
+static hash_action_func child_info_destroy;
 
 struct process_args
   {
     char **argv;
     int argc;
   };
+
+/* Destroys child_info struct. */
+static void
+child_info_destroy (struct hash_elem *e, void *aux UNUSED)
+{
+  struct child_info *i = hash_entry (e, struct child_info, elem);
+  
+  /* Mark child as no longer needing to update parent of status. */
+  if (i->child != NULL)
+    {
+      i->child->child_info = NULL;
+    }
+
+  free (i);
+}
+
+/* Hash function for child_info struct. */
+unsigned
+hash_child_info (const struct hash_elem *e, void *aux UNUSED)
+{
+  const struct child_info *i = hash_entry (e, struct child_info, elem);
+  return hash_int ((int) i->child_pid);
+}
+
+/* Less function for child_info struct. */
+bool
+less_child_info (const struct hash_elem *a, const struct hash_elem *b,
+                 void *aux UNUSED)
+{
+  const struct child_info *ia = hash_entry (a, struct child_info, elem);
+  const struct child_info *ib = hash_entry (b, struct child_info, elem);
+  return ia->child_pid < ib->child_pid;
+}
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -65,6 +103,29 @@ process_execute (const char *command)
   /* Create a new thread to execute command. */
   struct process_args args = { argv, argc };
   tid = thread_create (argv[0], PRI_DEFAULT, start_process, &args);
+
+  /* Initialise child info struct. */
+  struct child_info *i = malloc (sizeof (struct child_info));
+
+  if (i == NULL)
+    {
+      return TID_ERROR;
+    }
+
+  sema_init (&i->sema, 0);
+  i->status = -1;
+  i->child_pid = (pid_t) tid;
+  
+  hash_insert (&thread_current ()->children_map, &i->elem);
+  
+  /* Find thread tid. */
+  struct thread t;
+  t.tid = tid;
+  struct hash_elem *e = hash_find (&thread_map, &t.hash_elem);
+  struct thread *child = hash_entry (e, struct thread, hash_elem);
+  i->child = child;
+  child->child_info = i;
+  
   if (tid == TID_ERROR)
     palloc_free_page (cmd_copy); 
   return tid;
@@ -163,20 +224,26 @@ start_process (void *args_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  /* Temporary infinite loop. */
-  for (;;) {}
+  struct child_info i;
+  i.child_pid = (pid_t) child_tid;
+  struct hash_elem *e = hash_find (&thread_current ()->children_map, &i.elem);
 
-  /* If TID not in hashmap return -1. */
+  /* Current thread does not have child to wait for with tid child_tid. */
+  if (e == NULL)
+    {
+      return -1;
+    }
 
-  /* Get entry in hashmap for thread TID. (thread struct ? - no bc page is freed) */
+  struct child_info *child_info = hash_entry (e, struct child_info, elem);
+  
+  /* Wait for child to exit. */
+  sema_down (&child_info->sema);
 
-  /* If  entry->parent_pid != current pid or entry->process_wait_success, return -1*/
+  /* Remove child_info from parent's hashmap as waiting only allowed once. */
+  hash_delete (&thread_current ()->children_map, &child_info->elem);
+  free (child_info);
 
-  /* sema_down (entry->semaphore). */
-
-  /* return exit status */
-
-  return -1;
+  return child_info->status;
 }
 
 /* Free the current process's resources. */
@@ -185,6 +252,14 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  hash_destroy (&cur->children_map, child_info_destroy);
+
+  /* Inform parent thread that this process has exited. */
+  if (cur->child_info != NULL)
+    {
+      sema_up (&cur->child_info->sema);
+    }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
