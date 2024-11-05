@@ -309,28 +309,27 @@ sys_read (void *argv[])
   void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
 
-  if (fd == 0)
+  if (fd == 0) 
     {
-      /* Read from keyboard. */
+      // Read from the keyboard
       unsigned i;
-      for (i = 0; i < size; i++)
-        {
-          ((char *) buffer)[i] = input_getc();
-        }
+      for (i = 0; i < size; i++) {
+        ((char *)buffer)[i] = input_getc ();
+      }
       return size;
     }
-  else
+
+  lock_acquire (&filesys_lock);
+  struct file *file = get_file_from_fd (fd);
+  if (file == NULL) 
     {
-      struct file *file = get_file_from_fd (fd);
-      if (file == NULL)
-        {
-          return -1;
-        }
-      lock_acquire (&filesys_lock);
-      int bytes_read = file_read (file, buffer, size);
       lock_release (&filesys_lock);
-      return bytes_read;
+      return INVALID_FD;
     }
+  int bytes_read = file_read (file, buffer, size);
+  lock_release (&filesys_lock);
+
+  return bytes_read;
 }
 
 static int
@@ -354,12 +353,13 @@ sys_write (void *argv[])
     }
   else
     {
-      struct file *file = get_file_from_fd (fd);
-      if (file == NULL)
-        {
-          return -1;
-        }
       lock_acquire (&filesys_lock);
+      struct file *file = get_file_from_fd (fd);
+      if (file == NULL) 
+        {
+          lock_release (&filesys_lock);
+          return INVALID_FD;
+        }
       int bytes_written = file_write (file, buffer, size);
       lock_release (&filesys_lock);
       return bytes_written;
