@@ -41,10 +41,13 @@ static void
 child_info_destroy (struct hash_elem *e, void *aux UNUSED)
 {
   struct child_info *i = hash_entry (e, struct child_info, elem);
+  
+  /* Mark child as no longer needing to update parent of status. */
   if (i->child != NULL)
     {
       i->child->child_info = NULL;
     }
+
   free (i);
 }
 
@@ -232,11 +235,13 @@ process_wait (tid_t child_tid UNUSED)
     }
 
   struct child_info *child_info = hash_entry (e, struct child_info, elem);
+  
   /* Wait for child to exit. */
   sema_down (&child_info->sema);
 
   /* Remove child_info from parent's hashmap as waiting only allowed once. */
   hash_delete (&thread_current ()->children_map, &child_info->elem);
+  free (child_info);
 
   return child_info->status;
 }
@@ -250,6 +255,7 @@ process_exit (void)
 
   hash_destroy (&cur->children_map, child_info_destroy);
 
+  /* Inform parent thread that this process has exited. */
   if (cur->child_info != NULL)
     {
       sema_up (&cur->child_info->sema);
