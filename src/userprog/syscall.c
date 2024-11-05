@@ -154,6 +154,22 @@ fd_file_map_remove (int fd)
   }
 }
 
+/* Helper function to get a file from the hash table of open files. */
+static struct file *
+get_file_from_fd(int fd)
+{
+  struct fd_file f;
+  f.fd = fd;
+  struct hash_elem *e = hash_find (&fd_file_map, &f.hash_elem);
+  if (e == NULL) 
+    {
+      return NULL; // File doesn't exist
+    }
+  struct fd_file *fd_file_entry = hash_entry (e, struct fd_file, hash_elem);
+  // TODO: do we need to check if fd_file_entry is NULL?
+  return fd_file_entry->file;
+}
+
 void
 syscall_init (void) 
 {
@@ -314,8 +330,18 @@ sys_write (void *argv[])
 
       return size;
     }
-
-  return 0;
+  else
+    {
+      struct file *file = get_file_from_fd (fd);
+      if (file == NULL)
+        {
+          return -1;
+        }
+      lock_acquire (&filesys_lock);
+      int bytes_written = file_write (file, buffer, size);
+      lock_release (&filesys_lock);
+      return bytes_written;
+    }
 }
 
 static void
