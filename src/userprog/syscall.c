@@ -308,7 +308,29 @@ sys_read (void *argv[])
   int fd = (int) argv[0];
   void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
-  return 0;
+
+  if (fd == 0)
+    {
+      /* Read from keyboard. */
+      unsigned i;
+      for (i = 0; i < size; i++)
+        {
+          ((char *) buffer)[i] = input_getc();
+        }
+      return size;
+    }
+  else
+    {
+      struct file *file = get_file_from_fd (fd);
+      if (file == NULL)
+        {
+          return -1;
+        }
+      lock_acquire (&filesys_lock);
+      int bytes_read = file_read (file, buffer, size);
+      lock_release (&filesys_lock);
+      return bytes_read;
+    }
 }
 
 static int
