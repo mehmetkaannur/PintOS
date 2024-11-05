@@ -7,8 +7,17 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
+#include "filesys/file.h"
+#include "userprog/process.h"
+#include "devices/input.h"
+#include "filesys/filesys.h"
+#include "devices/shutdown.h"
 
 #define CONSOLE_BUFFER_SIZE 100
+#define INVALID_FD -1
+
+static int next_fd = 2; /* Next available file descriptor. 0 and 1 are reserved. */
 
 /* Functions to handle syscalls. */
 static void sys_halt (void *argv[] UNUSED);
@@ -83,10 +92,74 @@ validate_user_pointer (const void *uaddr)
 }
 #endif
 
+static void
+check_filename (const char *filename)
+{
+  if (filename == NULL)
+    {
+      thread_exit ();
+    }
+  validate_user_pointer ((const uint32_t *) filename);
+}
+
+static int
+allocate_fd (void)
+{
+  return next_fd++;
+}
+
+/* Hash function for file descriptor. */
+unsigned 
+fd_hash (const struct hash_elem *e, void *aux UNUSED) 
+{
+  const struct fd_file *f = hash_entry (e, struct fd_file, hash_elem);
+  return hash_int (f->fd);
+}
+
+/* Comparison function for file descriptor. */
+bool 
+fd_less (const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED) 
+{
+  const struct fd_file *fa = hash_entry (a, struct fd_file, hash_elem);
+  const struct fd_file *fb = hash_entry (b, struct fd_file, hash_elem);
+  return fa->fd < fb->fd;
+}
+
+/* Add a file descriptor and file pointer to the hash table. */
+void 
+fd_file_map_insert (int fd, struct file *file) 
+{
+  struct fd_file *f = malloc (sizeof(struct fd_file));
+  if (f == NULL) 
+    {
+      return;
+    }
+  f->fd = fd;
+  f->file = file;
+  hash_insert (&fd_file_map, &f->hash_elem);
+}
+
+/* Remove a file descriptor and file pointer from the hash table. */
+void 
+fd_file_map_remove (int fd) 
+{
+  struct fd_file f;
+  f.fd = fd;
+  struct hash_elem *e = hash_delete (&fd_file_map, &f.hash_elem);
+  if (e != NULL) {
+    struct fd_file *fd_file_entry = hash_entry (e, struct fd_file, hash_elem);
+    file_allow_write (fd_file_entry->file);
+    file_close (fd_file_entry->file);
+    free (fd_file_entry);
+  }
+}
+
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  hash_init (&fd_file_map, fd_hash, fd_less, NULL); // initialize hash table for files
+  lock_init (&filesys_lock);
 }
 
 static void
@@ -155,21 +228,55 @@ sys_create (void *argv[])
 {
   const char *file = (const char *) argv[0];
   unsigned initial_size = (unsigned) argv[1];
-  return false;
+  check_filename (file);
+  bool success = false;
+  if (strlen (file) > READDIR_MAX_LEN)
+    {
+      return false;
+    }
+  lock_acquire (&filesys_lock);
+  success = filesys_create (file, initial_size);
+  lock_release (&filesys_lock);
+  return success;
 }
 
 static bool
 sys_remove (void *argv[])
 {
   const char *file = (const char *) argv[0];
-  return false;
+  check_filename (file);
+  bool success = false;
+  lock_acquire (&filesys_lock);
+  success = filesys_remove (file);
+  lock_release (&filesys_lock);
+  return success;
 }
 
 static int
 sys_open (void *argv[])
 {
   const char *file = (const char *) argv[0];
-  return 0;
+  check_filename (file);
+
+  lock_acquire (&filesys_lock);
+  struct file *f = filesys_open (file);
+  lock_release (&filesys_lock);
+  if (f == NULL) 
+    {
+      return INVALID_FD; // File could not be opened
+    }
+
+  // Allocate a new file descriptor
+  int fd = allocate_fd ();
+  if (fd == -1) 
+    {
+      file_close (f);
+      return INVALID_FD; // No available file descriptors
+    }
+
+  fd_file_map_insert (fd, f);
+
+  return fd;
 }
 
 static int
