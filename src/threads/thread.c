@@ -253,15 +253,25 @@ thread_init (void)
 void
 thread_start (void) 
 {
+  /* Initialise thread_map. */
+  hash_init (&thread_map, hash_thread, less_thread, NULL);
+
   /* Create the idle thread. */
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
   thread_create ("idle", PRI_MIN, idle, &idle_started);
 
+  /* We assume that this function is only called once ever 
+     and that is by the main thread after malloc has been initialised.
+     Since the main thread is not created using thread_create,
+     we need to initialise its children map and do so here. */
+  hash_init (&thread_current ()->children_map,
+             hash_child_info,
+             less_child_info,
+             NULL);
+
   /* Start preemptive thread scheduling. */
   intr_enable ();
-
-  hash_init (&thread_map, hash_thread, less_thread, NULL);
 
   /* Wait for the idle thread to initialize idle_thread. */
   sema_down (&idle_started);
