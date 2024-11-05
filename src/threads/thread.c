@@ -791,6 +791,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->waiting_sema = NULL;
   t->waiting_lock = NULL;
   t->magic = THREAD_MAGIC;
+  t->exit_status = -1;
   list_init (&t->locks);
 
   old_level = intr_disable ();

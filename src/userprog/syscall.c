@@ -123,9 +123,11 @@ static void
 sys_exit (void *argv[])
 {
   int status = (int) argv[0];
-  printf("%s: exit(%d)\n", thread_current()->name, status);
 
   struct thread *cur = thread_current ();
+  
+  /* Set exit status for thread. */
+  cur->exit_status = status;
   if (cur->child_info != NULL)
     {
       cur->child_info->status = status;

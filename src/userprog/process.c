@@ -255,6 +255,8 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
+  printf("%s: exit(%d)\n", cur->name, cur->exit_status);
+  
   hash_destroy (&cur->children_map, child_info_destroy);
 
   /* Inform parent thread that this process has exited. */
