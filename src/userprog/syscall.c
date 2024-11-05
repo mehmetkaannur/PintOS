@@ -138,14 +138,14 @@ static pid_t
 sys_exec (void *argv[])
 {
   const char *cmd_line = (const char *) argv[0];
-  return 0;
+  return process_execute (cmd_line);
 }
 
 static int
 sys_wait (void *argv[])
 {
   int pid = (int) argv[0];
-  return 0;
+  return process_wait (pid);
 }
 
 static bool
