@@ -239,11 +239,13 @@ process_wait (tid_t child_tid UNUSED)
   /* Wait for child to exit. */
   sema_down (&child_info->sema);
 
+  int status = child_info->status;
+  
   /* Remove child_info from parent's hashmap as waiting only allowed once. */
   hash_delete (&thread_current ()->children_map, &child_info->elem);
   free (child_info);
 
-  return child_info->status;
+  return status;
 }
 
 /* Free the current process's resources. */
@@ -253,6 +255,8 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
+  printf("%s: exit(%d)\n", cur->name, cur->exit_status);
+  
   hash_destroy (&cur->children_map, child_info_destroy);
 
   /* Inform parent thread that this process has exited. */

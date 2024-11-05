@@ -112,6 +112,8 @@ struct thread
                                            info structs. */
     struct child_info *child_info;      /* Pointer to info struct
                                            for parent. */
+    int exit_status;                    /* Exit status of thread
+                                          (for child not parent to access). */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

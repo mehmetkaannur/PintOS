@@ -123,9 +123,11 @@ static void
 sys_exit (void *argv[])
 {
   int status = (int) argv[0];
-  printf("%s: exit(%d)\n", thread_current()->name, status);
 
   struct thread *cur = thread_current ();
+  
+  /* Set exit status for thread. */
+  cur->exit_status = status;
   if (cur->child_info != NULL)
     {
       cur->child_info->status = status;
@@ -138,14 +140,14 @@ static pid_t
 sys_exec (void *argv[])
 {
   const char *cmd_line = (const char *) argv[0];
-  return 0;
+  return process_execute (cmd_line);
 }
 
 static int
 sys_wait (void *argv[])
 {
   int pid = (int) argv[0];
-  return 0;
+  return process_wait (pid);
 }
 
 static bool
