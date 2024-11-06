@@ -387,19 +387,66 @@ sys_seek (void *argv[])
 {
   int fd = (int) argv[0];
   unsigned position = (unsigned) argv[1];
+  if (fd == 0 || fd == 1) 
+    {
+      return;
+    }
+  lock_acquire (&filesys_lock);
+  struct file *file = get_file_from_fd (fd);
+  if (file == NULL) 
+    {
+      lock_release (&filesys_lock);
+      return;
+    }
+  file_seek (file, position); // change the file position
+  lock_release (&filesys_lock);
 }
 
 static unsigned
 sys_tell (void *argv[])
 {
   int fd = (int) argv[0];
-  return 0;
+  if (fd == 0 || fd == 1) 
+    {
+      return -1;
+    }
+  lock_acquire (&filesys_lock);
+  struct file *file = get_file_from_fd (fd);
+
+  if (file == NULL) 
+    {
+      lock_release (&filesys_lock);
+      return INVALID_FD;
+    }
+  
+  // Return the position of the next byte to be read or written
+  unsigned pos = file_tell (file);
+  lock_release (&filesys_lock);
+  return pos;
 }
 
 static void
 sys_close (void *argv[])
 {
   int fd = (int) argv[0];
+  /*
+  if (fd == 0 || fd == 1) 
+    {
+      return;
+    }
+  lock_acquire (&filesys_lock);
+  struct file *file = get_file_from_fd (fd);
+  if (file == NULL) 
+    {
+      lock_release (&filesys_lock);
+      return;
+    }
+
+  file_close (file); // close the file
+  fd_file_map_remove (fd); // remove the file descriptor from the hash table
+
+  lock_release (&filesys_lock);
+  */
 }
 
 static mapid_t
