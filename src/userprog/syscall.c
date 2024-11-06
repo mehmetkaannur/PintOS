@@ -299,7 +299,17 @@ static int
 sys_filesize (void *argv[])
 {
   int fd = (int) argv[0];
-  return 0;
+  lock_acquire (&filesys_lock);
+  struct file *file = get_file_from_fd (fd);
+  if (file == NULL) 
+    {
+      lock_release (&filesys_lock);
+      return INVALID_FD;
+    }
+
+  int size = file_length (file);
+  lock_release (&filesys_lock);
+  return size;
 }
 
 static int
@@ -308,7 +318,6 @@ sys_read (void *argv[])
   int fd = (int) argv[0];
   void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
-
   if (fd == 0) 
     {
       // Read from the keyboard
@@ -317,6 +326,10 @@ sys_read (void *argv[])
         ((char *)buffer)[i] = input_getc ();
       }
       return size;
+    }
+  else if (fd == 1)
+    {
+      return -1;
     }
 
   lock_acquire (&filesys_lock);
@@ -351,19 +364,22 @@ sys_write (void *argv[])
 
       return size;
     }
-  else
+  else if (fd == 0) 
     {
-      lock_acquire (&filesys_lock);
-      struct file *file = get_file_from_fd (fd);
-      if (file == NULL) 
-        {
-          lock_release (&filesys_lock);
-          return INVALID_FD;
-        }
-      int bytes_written = file_write (file, buffer, size);
-      lock_release (&filesys_lock);
-      return bytes_written;
+      return -1;
     }
+
+  lock_acquire (&filesys_lock);
+  struct file *file = get_file_from_fd (fd);
+  if (file == NULL) 
+    {
+      lock_release (&filesys_lock);
+      return INVALID_FD;
+    }
+  int bytes_write = file_write (file, buffer, size);
+  lock_release (&filesys_lock);
+
+  return bytes_write;
 }
 
 static void
