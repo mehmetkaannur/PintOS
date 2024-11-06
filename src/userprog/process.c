@@ -119,11 +119,14 @@ process_execute (const char *command)
     }
   
   /* Create a new thread to execute command. */
-  struct process_args args = { argv, argc };
-  tid = thread_create (argv[0], PRI_DEFAULT, start_process, &args);
+  struct process_args *args = malloc (sizeof (struct process_args));
+  args->argc = argc;
+  args->argv = argv;
+  tid = thread_create (argv[0], PRI_DEFAULT, start_process, args);
  
   if (tid == TID_ERROR)
     {
+      free (args);
       free (argv);
       palloc_free_page (cmd_copy);
       return TID_ERROR;
@@ -216,14 +219,21 @@ start_process (void *args_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (args->argv[0], &if_.eip, &if_.esp);
 
+  /* If load failed, quit. */
+  if (!success) 
+    {
+      palloc_free_page (args->argv[0]);
+      free (args->argv);
+      free (args);
+      thread_exit ();
+    }
+
   /* Setup stack with arguments. */
   setup_stack_args (args->argc, args->argv, &if_.esp);
 
-  /* If load failed, quit. */
   palloc_free_page (args->argv[0]);
   free (args->argv);
-  if (!success) 
-    thread_exit ();
+  free (args);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
