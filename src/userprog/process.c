@@ -22,8 +22,7 @@
 #include "threads/malloc.h"
 #include "hash.h"
 
-#define MAX_ARG_SIZE 30
-#define MAX_ARGS (PGSIZE / MAX_ARG_SIZE)
+#define MAX_ALLOWED_ARGS ((int) PGSIZE / (int) sizeof (char *))
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -89,20 +88,46 @@ process_execute (const char *command)
   char *sep = " ";
   char *arg, *last;
   int argc = 0;
-  char *argv[MAX_ARGS];
+  /* Maximum possible arguments from command string occurs if each character 
+     in cmd_copy is an argument. */
+  size_t max_cmd_argv_size = strlen (cmd_copy) * sizeof (char *);
+  size_t argv_size = max_cmd_argv_size > PGSIZE 
+                   ? PGSIZE : max_cmd_argv_size;
+  char **argv = malloc (argv_size);
+
+  if (argv == NULL)
+    {
+      palloc_free_page (cmd_copy);
+      return TID_ERROR;
+    }
 
   /* Tokenise command string into file name and arguments. */
   for (arg = strtok_r (cmd_copy, sep, &last);
-       arg;
+       arg && argc < MAX_ALLOWED_ARGS;
        arg = strtok_r (NULL, sep, &last))
     {
       argv[argc] = arg;
       argc++;
     }
 
+  /* Check if command has more arguments than allowed. */
+  if (argc == MAX_ALLOWED_ARGS && arg)
+    {
+      free (argv);
+      palloc_free_page (cmd_copy);
+      return TID_ERROR;
+    }
+  
   /* Create a new thread to execute command. */
   struct process_args args = { argv, argc };
   tid = thread_create (argv[0], PRI_DEFAULT, start_process, &args);
+ 
+  if (tid == TID_ERROR)
+    {
+      free (argv);
+      palloc_free_page (cmd_copy);
+      return TID_ERROR;
+    }
 
   /* Initialise child info struct. */
   struct child_info *i = malloc (sizeof (struct child_info));
@@ -126,8 +151,6 @@ process_execute (const char *command)
   i->child = child;
   child->child_info = i;
   
-  if (tid == TID_ERROR)
-    palloc_free_page (cmd_copy); 
   return tid;
 }
 
@@ -143,7 +166,6 @@ setup_stack_args (int argc, char *argv[], void **sp_)
   for (int i = argc - 1; i >= 0; i--)
     {
       arglen = strlen (argv[i]) + 1; 
-      ASSERT (arglen <= MAX_ARG_SIZE);
       *sp -= arglen;
 
       strlcpy (*sp, argv[i], arglen);
@@ -199,6 +221,7 @@ start_process (void *args_)
 
   /* If load failed, quit. */
   palloc_free_page (args->argv[0]);
+  free (args->argv);
   if (!success) 
     thread_exit ();
 
