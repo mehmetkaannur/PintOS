@@ -3,9 +3,16 @@ stages:
 
 run_make_check:
   stage: test
-  image: gcc:latest
+  image: ubuntu:20.04
+  before_script:
+    - apt-get update -qq
+    - apt-get install -yq build-essential gcc-multilib qemu-system-x86 expect libncurses5-dev
+    - export PATH=$PATH:/usr/local/bin
+    - cd src/utils
+    - make
+    - export PATH=$PATH:$(pwd)
+    - cd ../userprog
   script:
-    - cd src/userprog
     - make check
   rules:
     - if: $CI_MERGE_REQUEST_ID
