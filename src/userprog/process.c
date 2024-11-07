@@ -39,7 +39,9 @@ struct process_args
 static void
 child_info_destroy (struct hash_elem *e, void *aux UNUSED)
 {
-  struct child_info *i = hash_entry (e, struct child_info, elem);
+  /* Remove from child_info_map. */
+  hash_delete (&child_info_map, e);
+  struct child_info *i = hash_entry (e, struct child_info, child_elem);
   
   /* Mark child as no longer needing to update parent of status. */
   if (i->child != NULL)
@@ -48,24 +50,6 @@ child_info_destroy (struct hash_elem *e, void *aux UNUSED)
     }
 
   free (i);
-}
-
-/* Hash function for child_info struct. */
-unsigned
-hash_child_info (const struct hash_elem *e, void *aux UNUSED)
-{
-  const struct child_info *i = hash_entry (e, struct child_info, elem);
-  return hash_int ((int) i->child_pid);
-}
-
-/* Less function for child_info struct. */
-bool
-less_child_info (const struct hash_elem *a, const struct hash_elem *b,
-                 void *aux UNUSED)
-{
-  const struct child_info *ia = hash_entry (a, struct child_info, elem);
-  const struct child_info *ib = hash_entry (b, struct child_info, elem);
-  return ia->child_pid < ib->child_pid;
 }
 
 /* Starts a new thread running a user program loaded from
@@ -95,6 +79,7 @@ process_execute (const char *command)
                    ? PGSIZE : max_cmd_argv_size;
   char **argv = malloc (argv_size);
 
+  /* Check if malloc was successful. */
   if (argv == NULL)
     {
       palloc_free_page (cmd_copy);
@@ -120,6 +105,15 @@ process_execute (const char *command)
   
   /* Create a new thread to execute command. */
   struct process_args *args = malloc (sizeof (struct process_args));
+
+  /* Check if malloc was successful. */
+  if (args == NULL)
+    {
+      free (argv);
+      palloc_free_page (cmd_copy);
+      return TID_ERROR;
+    }
+
   args->argc = argc;
   args->argv = argv;
   tid = thread_create (argv[0], PRI_DEFAULT, start_process, args);
@@ -132,27 +126,14 @@ process_execute (const char *command)
       return TID_ERROR;
     }
 
-  /* Initialise child info struct. */
-  struct child_info *i = malloc (sizeof (struct child_info));
+  /* Find child_info struct corresponding to tid. */
+  struct child_info i;
+  i.child_pid = (pid_t) tid;
+  struct hash_elem *e = hash_find (&child_info_map, &i.elem);
+  struct child_info *child_info = hash_entry (e, struct child_info, elem);
 
-  if (i == NULL)
-    {
-      return TID_ERROR;
-    }
-
-  sema_init (&i->sema, 0);
-  i->status = -1;
-  i->child_pid = (pid_t) tid;
-  
-  hash_insert (&thread_current ()->children_map, &i->elem);
-  
-  /* Find thread tid. */
-  struct thread t;
-  t.tid = tid;
-  struct hash_elem *e = hash_find (&thread_map, &t.hash_elem);
-  struct thread *child = hash_entry (e, struct thread, hash_elem);
-  i->child = child;
-  child->child_info = i;
+  /* Add child_info to parent's children_map field. */
+  hash_insert (&thread_current ()->children_map, &child_info->child_elem);
   
   return tid;
 }
@@ -255,11 +236,12 @@ start_process (void *args_)
  * This function will be implemented in task 2.
  * For now, it does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
   struct child_info i;
   i.child_pid = (pid_t) child_tid;
-  struct hash_elem *e = hash_find (&thread_current ()->children_map, &i.elem);
+  struct hash_elem *e = hash_find (&thread_current ()->children_map,
+                                   &i.child_elem);
 
   /* Current thread does not have child to wait for with tid child_tid. */
   if (e == NULL)
@@ -267,7 +249,8 @@ process_wait (tid_t child_tid UNUSED)
       return -1;
     }
 
-  struct child_info *child_info = hash_entry (e, struct child_info, elem);
+  struct child_info *child_info = hash_entry (e, struct child_info,
+                                              child_elem);
   
   /* Wait for child to exit. */
   sema_down (&child_info->sema);
@@ -275,7 +258,8 @@ process_wait (tid_t child_tid UNUSED)
   int status = child_info->status;
   
   /* Remove child_info from parent's hashmap as waiting only allowed once. */
-  hash_delete (&thread_current ()->children_map, &child_info->elem);
+  hash_delete (&thread_current ()->children_map, &child_info->child_elem);
+  hash_delete (&child_info_map, &child_info->elem);
   free (child_info);
 
   return status;
