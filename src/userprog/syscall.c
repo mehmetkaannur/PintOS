@@ -17,6 +17,8 @@
 
 #define CONSOLE_BUFFER_SIZE 100
 #define INVALID_FD -1
+#define STDIN 0
+#define STDOUT 1
 
 static int next_fd = 2; /* Next available file descriptor. 0 and 1 are reserved. */
 
@@ -149,7 +151,6 @@ fd_file_map_remove (int fd)
   struct hash_elem *e = hash_delete (&fd_file_map, &f.hash_elem);
   if (e != NULL) {
     struct fd_file *fd_file_entry = hash_entry (e, struct fd_file, hash_elem);
-    file_allow_write (fd_file_entry->file);
     file_close (fd_file_entry->file);
     free (fd_file_entry);
   }
@@ -353,11 +354,13 @@ sys_read (void *argv[])
 static int
 sys_write (void *argv[])
 {
+  // file_deny_write is called in load() in process.c
+  // TODO: file_allow_write() need to be called properly
   int fd = (int) argv[0];
   const void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
   
-  if (fd == 1)
+  if (fd == STDOUT)
     {
       /* Write to console, CONSOLE_BUFFER_SIZE chars at a time. */
       unsigned i;
@@ -369,9 +372,9 @@ sys_write (void *argv[])
 
       return size;
     }
-  else if (fd == 0) 
+  else if (fd <= STDIN) 
     {
-      return -1;
+      return 0; // should we return -1 or 0?
     }
 
   lock_acquire (&filesys_lock);
