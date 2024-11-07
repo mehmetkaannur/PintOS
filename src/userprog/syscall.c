@@ -4,6 +4,7 @@
 #include "userprog/process.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include <string.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
@@ -184,6 +185,10 @@ syscall_handler (struct intr_frame *f)
   /* Get info for handling syscall based on syscall_number. */
   validate_user_pointer (f->esp);
   int syscall_number = *(int *) f->esp;
+  if (syscall_number < 0 || syscall_number >= sizeof (syscall_table) / sizeof (struct syscall_info))
+    {
+      thread_exit ();
+    }
   struct syscall_info info = syscall_table[syscall_number];
 
   /* Get arguments for syscall function from stack. */
