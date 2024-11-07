@@ -3,6 +3,7 @@ stages:
 
 run_make_check:
   stage: test
+  image: gcc:latest
   script:
     - cd src/userprog
     - make check
