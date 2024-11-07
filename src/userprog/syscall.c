@@ -4,6 +4,7 @@
 #include "userprog/process.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include <string.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
@@ -16,6 +17,8 @@
 
 #define CONSOLE_BUFFER_SIZE 100
 #define INVALID_FD -1
+#define STDIN 0
+#define STDOUT 1
 
 static int next_fd = 2; /* Next available file descriptor. 0 and 1 are reserved. */
 
@@ -148,10 +151,25 @@ fd_file_map_remove (int fd)
   struct hash_elem *e = hash_delete (&fd_file_map, &f.hash_elem);
   if (e != NULL) {
     struct fd_file *fd_file_entry = hash_entry (e, struct fd_file, hash_elem);
-    file_allow_write (fd_file_entry->file);
     file_close (fd_file_entry->file);
     free (fd_file_entry);
   }
+}
+
+/* Helper function to get a file from the hash table of open files. */
+static struct file *
+get_file_from_fd(int fd)
+{
+  struct fd_file f;
+  f.fd = fd;
+  struct hash_elem *e = hash_find (&fd_file_map, &f.hash_elem);
+  if (e == NULL) 
+    {
+      return NULL; // File doesn't exist
+    }
+  struct fd_file *fd_file_entry = hash_entry (e, struct fd_file, hash_elem);
+  // TODO: do we need to check if fd_file_entry is NULL?
+  return fd_file_entry->file;
 }
 
 void
@@ -168,6 +186,10 @@ syscall_handler (struct intr_frame *f)
   /* Get info for handling syscall based on syscall_number. */
   validate_user_pointer (f->esp);
   int syscall_number = *(int *) f->esp;
+  if (syscall_number < 0 || syscall_number >= sizeof (syscall_table) / sizeof (struct syscall_info))
+    {
+      thread_exit ();
+    }
   struct syscall_info info = syscall_table[syscall_number];
 
   /* Get arguments for syscall function from stack. */
@@ -283,7 +305,17 @@ static int
 sys_filesize (void *argv[])
 {
   int fd = (int) argv[0];
-  return 0;
+  lock_acquire (&filesys_lock);
+  struct file *file = get_file_from_fd (fd);
+  if (file == NULL) 
+    {
+      lock_release (&filesys_lock);
+      return INVALID_FD;
+    }
+
+  int size = file_length (file);
+  lock_release (&filesys_lock);
+  return size;
 }
 
 static int
@@ -292,17 +324,43 @@ sys_read (void *argv[])
   int fd = (int) argv[0];
   void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
-  return 0;
+  if (fd == 0) 
+    {
+      // Read from the keyboard
+      unsigned i;
+      for (i = 0; i < size; i++) {
+        ((char *)buffer)[i] = input_getc ();
+      }
+      return size;
+    }
+  else if (fd == 1)
+    {
+      return -1;
+    }
+
+  lock_acquire (&filesys_lock);
+  struct file *file = get_file_from_fd (fd);
+  if (file == NULL) 
+    {
+      lock_release (&filesys_lock);
+      return INVALID_FD;
+    }
+  int bytes_read = file_read (file, buffer, size);
+  lock_release (&filesys_lock);
+
+  return bytes_read;
 }
 
 static int
 sys_write (void *argv[])
 {
+  // file_deny_write is called in load() in process.c
+  // TODO: file_allow_write() need to be called properly
   int fd = (int) argv[0];
   const void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
   
-  if (fd == 1)
+  if (fd == STDOUT)
     {
       /* Write to console, CONSOLE_BUFFER_SIZE chars at a time. */
       unsigned i;
@@ -314,8 +372,22 @@ sys_write (void *argv[])
 
       return size;
     }
+  else if (fd <= STDIN) 
+    {
+      return 0; // should we return -1 or 0?
+    }
 
-  return 0;
+  lock_acquire (&filesys_lock);
+  struct file *file = get_file_from_fd (fd);
+  if (file == NULL) 
+    {
+      lock_release (&filesys_lock);
+      return INVALID_FD;
+    }
+  int bytes_write = file_write (file, buffer, size);
+  lock_release (&filesys_lock);
+
+  return bytes_write;
 }
 
 static void
@@ -323,13 +395,42 @@ sys_seek (void *argv[])
 {
   int fd = (int) argv[0];
   unsigned position = (unsigned) argv[1];
+  if (fd == 0 || fd == 1) 
+    {
+      return;
+    }
+  lock_acquire (&filesys_lock);
+  struct file *file = get_file_from_fd (fd);
+  if (file == NULL) 
+    {
+      lock_release (&filesys_lock);
+      return;
+    }
+  file_seek (file, position); // change the file position
+  lock_release (&filesys_lock);
 }
 
 static unsigned
 sys_tell (void *argv[])
 {
   int fd = (int) argv[0];
-  return 0;
+  if (fd == 0 || fd == 1) 
+    {
+      return -1;
+    }
+  lock_acquire (&filesys_lock);
+  struct file *file = get_file_from_fd (fd);
+
+  if (file == NULL) 
+    {
+      lock_release (&filesys_lock);
+      return INVALID_FD;
+    }
+  
+  // Return the position of the next byte to be read or written
+  unsigned pos = file_tell (file);
+  lock_release (&filesys_lock);
+  return pos;
 }
 
 static void
