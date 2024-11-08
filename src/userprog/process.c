@@ -63,6 +63,13 @@ process_execute (const char *command)
   char *cmd_copy;
   tid_t tid;
 
+  /* Ensure command is a valid pointer. */
+  if (is_user_vaddr (command) &&
+      !pagedir_get_page (thread_current ()->pagedir, command))
+    {
+      return TID_ERROR;
+    }
+
   /* Make a copy of command.
      Otherwise there's a race between the caller and load(). */
   cmd_copy = palloc_get_page (0);
