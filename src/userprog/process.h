@@ -8,13 +8,15 @@
 
 struct child_info
   {
-    pid_t child_pid;               /* Child's process id. */
-    struct thread *child;          /* Pointer to child's thread. */
-    struct semaphore sema;         /* Semaphore for process_wait. */
-    struct hash_elem elem;         /* Hash elem for child_info_map. */
-    struct hash_elem child_elem;   /* Hash elem for parent's children_map. */
-    int status;                    /* Exit status of child. */
+    pid_t child_pid;
+    struct thread *child;
+    struct semaphore sema;
+    struct hash_elem elem;
+    int status;
   };
+
+hash_hash_func hash_child_info;
+hash_less_func less_child_info;
 
 tid_t process_execute (const char *file_name);
 int process_wait (tid_t);

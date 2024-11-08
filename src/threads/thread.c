@@ -4,7 +4,6 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdbool.h>
 #include "devices/timer.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
@@ -88,49 +87,28 @@ static void threads_update_bsd_priority (void);
 static void thread_update_bsd_priority (struct thread *t, void *aux UNUSED);
 static int bound_nice (int nice);
 
-static hash_hash_func hash_child_info_g;
-static hash_less_func less_child_info_g;
-
-static hash_hash_func hash_child_info;
-static hash_less_func less_child_info;
+static hash_hash_func hash_thread;
+static hash_less_func less_thread; 
 
 /* Map from tid to thread. */
-struct hash child_info_map;
+struct hash thread_map;
 
-/* Hash function for child_info struct (for global child_info_map). */
+/* Hash function for thread hash element. */
 static unsigned
-hash_child_info_g (const struct hash_elem *e, void *aux UNUSED)
+hash_thread (const struct hash_elem *e, void *aux UNUSED)
 {
-  const struct child_info *i = hash_entry (e, struct child_info, elem);
-  return hash_int ((int) i->child_pid);
+  const struct thread *t = hash_entry (e, struct thread, hash_elem);
+  return hash_int ((int) t->tid);
 }
 
-/* Less function for child_info struct (for global child_info_map). */
+/* Less function for thread hash elements. */
 static bool
-less_child_info_g (const struct hash_elem *a, const struct hash_elem *b,
-                   void *aux UNUSED)
+less_thread (const struct hash_elem *a, const struct hash_elem *b,
+             void *aux UNUSED)
 {
-  const struct child_info *ia = hash_entry (a, struct child_info, elem);
-  const struct child_info *ib = hash_entry (b, struct child_info, elem);
-  return ia->child_pid < ib->child_pid;
-}
-
-/* Hash function for child_info struct (for parent thread's children_map). */
-static unsigned
-hash_child_info (const struct hash_elem *e, void *aux UNUSED)
-{
-  const struct child_info *i = hash_entry (e, struct child_info, child_elem);
-  return hash_int ((int) i->child_pid);
-}
-
-/* Less function for child_info struct (for parent thread's children_map). */
-static bool
-less_child_info (const struct hash_elem *a, const struct hash_elem *b,
-                 void *aux UNUSED)
-{
-  const struct child_info *ia = hash_entry (a, struct child_info, child_elem);
-  const struct child_info *ib = hash_entry (b, struct child_info, child_elem);
-  return ia->child_pid < ib->child_pid;
+  const struct thread *ta = hash_entry (a, struct thread, hash_elem);
+  const struct thread *tb = hash_entry (b, struct thread, hash_elem);
+  return ta->tid < tb->tid;
 }
 
 /* Inserts thread into correct queue based on priority.
@@ -275,17 +253,8 @@ thread_init (void)
 void
 thread_start (void) 
 {
-  /* Initialise child_info_map. */
-  bool success = hash_init (&child_info_map, 
-                            hash_child_info_g,
-                            less_child_info_g,
-                            NULL);
-
-  /* Check if hash_init was successful. */
-  if (!success)
-    {
-      PANIC ("Failed to initialise child_info_map.");
-    }
+  /* Initialise thread_map. */
+  hash_init (&thread_map, hash_thread, less_thread, NULL);
 
   /* Create the idle thread. */
   struct semaphore idle_started;
@@ -296,16 +265,10 @@ thread_start (void)
      and that is by the main thread after malloc has been initialised.
      Since the main thread is not created using thread_create,
      we need to initialise its children map and do so here. */
-  bool children_map_success = hash_init (&thread_current ()->children_map,
-                                         hash_child_info,
-                                         less_child_info,
-                                         NULL);
-
-  /* Check if hash_init was successful. */
-  if (!children_map_success)
-    {
-      PANIC ("Failed to initialise children_map for main thread.");
-    }
+  hash_init (&thread_current ()->children_map,
+             hash_child_info,
+             less_child_info,
+             NULL);
 
   /* Start preemptive thread scheduling. */
   intr_enable ();
@@ -421,17 +384,7 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
-  bool success = hash_init (&t->children_map,
-                            hash_child_info,
-                            less_child_info,
-                            NULL);
-
-  /* Check if hash_init was successful. */
-  if (!success)
-    {
-      free (t);
-      return TID_ERROR;
-    }
+  hash_init (&t->children_map, hash_child_info, less_child_info, NULL);
 
   tid = t->tid = allocate_tid ();
 
@@ -457,23 +410,7 @@ thread_create (const char *name, int priority,
 
   intr_set_level (old_level);
 
-  /* Initialise child_info struct. */
-  struct child_info *child_info = malloc (sizeof (struct child_info));
-
-  if (child_info == NULL)
-    {
-      free (t);
-      return TID_ERROR;
-    }
-
-  child_info->child_pid = tid;
-  child_info->child = t;
-  sema_init (&child_info->sema, 0);
-  child_info->status = -1;
-  t->child_info = child_info;
-
-  /* Insert child_info struct into child_info_map. */
-  hash_insert (&child_info_map, &child_info->elem);
+  hash_insert (&thread_map, &t->hash_elem);
 
   /* Add to run queue. */
   thread_unblock (t);
