@@ -21,6 +21,7 @@
 #include "threads/synch.h"
 #include "threads/malloc.h"
 #include "hash.h"
+#include "userprog/syscall.h"
 
 #define MAX_ALLOWED_ARGS ((int) PGSIZE / (int) sizeof (char *))
 
@@ -410,12 +411,15 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
+  lock_acquire (&filesys_lock);
   file = filesys_open (file_name);
   if (file == NULL) 
     {
+      lock_release (&filesys_lock);
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+  file_deny_write (file);
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -426,9 +430,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
       || ehdr.e_phentsize != sizeof (struct Elf32_Phdr)
       || ehdr.e_phnum > 1024) 
     {
+      lock_release (&filesys_lock);
       printf ("load: %s: error loading executable\n", file_name);
       goto done; 
     }
+  lock_release (&filesys_lock);
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
@@ -436,12 +442,21 @@ load (const char *file_name, void (**eip) (void), void **esp)
     {
       struct Elf32_Phdr phdr;
 
+      lock_acquire (&filesys_lock);
       if (file_ofs < 0 || file_ofs > file_length (file))
-        goto done;
+        {
+          lock_release (&filesys_lock);
+          goto done;
+        }
       file_seek (file, file_ofs);
 
       if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
-        goto done;
+        {
+          lock_release (&filesys_lock);
+          goto done;
+        }
+      lock_release (&filesys_lock);
+      
       file_ofs += sizeof phdr;
       switch (phdr.p_type) 
         {
@@ -500,7 +515,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
   return success;
 }
 
