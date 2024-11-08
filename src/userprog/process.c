@@ -23,7 +23,7 @@
 #include "hash.h"
 #include "userprog/syscall.h"
 
-#define MAX_ALLOWED_ARGS ((int) PGSIZE / (int) sizeof (char *))
+#define NUM_ADDITIONAL_STACK_ADDRS 4
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -75,10 +75,11 @@ process_execute (const char *command)
   int argc = 0;
   /* Maximum possible arguments from command string occurs if each character 
      in cmd_copy is an argument. */
-  size_t max_cmd_argv_size = strlen (cmd_copy) * sizeof (char *);
-  size_t argv_size = max_cmd_argv_size > PGSIZE 
-                   ? PGSIZE : max_cmd_argv_size;
-  char **argv = malloc (argv_size);
+  size_t max_cmd_args = strlen (cmd_copy);
+  size_t argv_size = max_cmd_args > PGSIZE / (sizeof (char *)) 
+                   ? PGSIZE / (sizeof (char *))
+                   : max_cmd_args;
+  char **argv = malloc (argv_size * sizeof (char *));
 
   /* Check if malloc was successful. */
   if (argv == NULL)
@@ -87,17 +88,23 @@ process_execute (const char *command)
       return TID_ERROR;
     }
 
+  size_t size = 0;
   /* Tokenise command string into file name and arguments. */
   for (arg = strtok_r (cmd_copy, sep, &last);
-       arg && argc < MAX_ALLOWED_ARGS;
+       arg && argc < (int) argv_size;
        arg = strtok_r (NULL, sep, &last))
     {
       argv[argc] = arg;
       argc++;
+      size += strlen (arg) + 1;
     }
+  
+  /* Calculate projected size of stack after setup with args. */
+  size += argc * (int) sizeof (char *);
+  size += NUM_ADDITIONAL_STACK_ADDRS * sizeof (void *);
 
-  /* Check if command has more arguments than allowed. */
-  if (argc == MAX_ALLOWED_ARGS && arg)
+  /* Check if size of arguments in command too large. */
+  if (size >= PGSIZE)
     {
       free (argv);
       palloc_free_page (cmd_copy);
