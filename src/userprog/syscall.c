@@ -235,7 +235,31 @@ static pid_t
 sys_exec (void *argv[])
 {
   const char *cmd_line = (const char *) argv[0];
-  return process_execute (cmd_line);
+  tid_t tid = process_execute (cmd_line);
+
+  /* Wait for child process to finish load attempt. */
+  struct child_info i;
+  i.child_pid = (pid_t) tid;
+  struct hash_elem *e = hash_find (&thread_current ()->children_map,
+                                   &i.child_elem);
+
+  /* Child thread not created successfully. */
+  if (e == NULL)
+    {
+      return -1;
+    }
+    
+  struct child_info *child_info = hash_entry (e, struct child_info,
+                                              child_elem);
+  sema_down (&child_info->load_sema);
+
+  /* Check if child process loaded successfully. */
+  if (!child_info->load_success)
+    {
+      return -1;
+    }
+
+  return tid;
 }
 
 static int

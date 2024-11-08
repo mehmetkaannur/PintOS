@@ -30,7 +30,7 @@ typedef int tid_t;
 #define NICE_DEFAULT 0                  /* Default nice. */
 #define NICE_MAX 20                     /* Highest nice. */
 
-struct hash thread_map;              /* Map from tids to thread structs. */
+struct hash child_info_map;             /* Map of child_info structs. */
 
 /* A kernel thread or user process.
 
@@ -107,7 +107,6 @@ struct thread
     struct list locks;                  /* List of locks held. */
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    struct hash_elem hash_elem;         /* Hash element for thread_map. */
     struct hash children_map;           /* Map from pids of children to 
                                            info structs. */
     struct child_info *child_info;      /* Pointer to info struct
