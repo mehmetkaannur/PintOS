@@ -203,11 +203,15 @@ start_process (void *args_)
   /* If load failed, quit. */
   if (!success) 
     {
+      sema_up (&thread_current ()->child_info->load_sema);
       palloc_free_page (args->argv[0]);
       free (args->argv);
       free (args);
       thread_exit ();
     }
+
+  thread_current ()->child_info->load_success = true;
+  sema_up (&thread_current ()->child_info->load_sema);
 
   /* Setup stack with arguments. */
   setup_stack_args (args->argc, args->argv, &if_.esp);
@@ -253,7 +257,7 @@ process_wait (tid_t child_tid)
                                               child_elem);
   
   /* Wait for child to exit. */
-  sema_down (&child_info->sema);
+  sema_down (&child_info->exit_sema);
 
   int status = child_info->status;
   
@@ -279,7 +283,7 @@ process_exit (void)
   /* Inform parent thread that this process has exited. */
   if (cur->child_info != NULL)
     {
-      sema_up (&cur->child_info->sema);
+      sema_up (&cur->child_info->exit_sema);
     }
 
   /* Destroy the current process's page directory and switch back

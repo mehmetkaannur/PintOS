@@ -468,7 +468,9 @@ thread_create (const char *name, int priority,
 
   child_info->child_pid = tid;
   child_info->child = t;
-  sema_init (&child_info->sema, 0);
+  child_info->load_success = false;
+  sema_init (&child_info->load_sema, 0);
+  sema_init (&child_info->exit_sema, 0);
   child_info->status = -1;
   t->child_info = child_info;
 
