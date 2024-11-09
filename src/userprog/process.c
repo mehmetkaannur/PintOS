@@ -317,6 +317,16 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+  /* Allow write access and close the executable file */
+  if (cur->executable != NULL)
+    {
+      lock_acquire (&filesys_lock);
+      file_allow_write (cur->executable);
+      file_close (cur->executable);
+      lock_release (&filesys_lock);
+      cur->executable = NULL;
+    }
 }
 
 /* Sets up the CPU for running user code in the current
@@ -434,6 +444,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done; 
     }
   file_deny_write (file);
+  t->executable = file; // Assign executable file to thread
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
