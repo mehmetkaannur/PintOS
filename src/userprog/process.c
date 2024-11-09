@@ -24,6 +24,7 @@
 #include "userprog/syscall.h"
 
 #define NUM_ADDITIONAL_STACK_ADDRS 4
+#define POINTERS_PER_ARG 2
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -80,12 +81,15 @@ process_execute (const char *command)
   char *sep = " ";
   char *arg, *last;
   int argc = 0;
-  /* Maximum possible arguments from command string occurs if each character 
-     in cmd_copy is an argument. */
-  size_t max_cmd_args = strlen (cmd_copy);
-  size_t argv_size = max_cmd_args > PGSIZE / (sizeof (char *)) 
-                   ? PGSIZE / (sizeof (char *))
-                   : max_cmd_args;
+  /* Maximum possible arguments from command string occurs if every other
+    character in cmd_copy is an argument (e.g. "a b c d e" has 9 characters
+    and 5 args). */
+  size_t stack_size = NUM_ADDITIONAL_STACK_ADDRS * sizeof (void *);
+  size_t max_cmd_args = (strlen (cmd_copy) + 1) / 2;
+  size_t max_possible_args = (PGSIZE - stack_size) 
+                           / (POINTERS_PER_ARG * sizeof (void *));
+  size_t argv_size = max_cmd_args > max_possible_args
+                   ? max_possible_args : max_cmd_args;
   char **argv = malloc (argv_size * sizeof (char *));
 
   /* Check if malloc was successful. */
@@ -95,7 +99,6 @@ process_execute (const char *command)
       return TID_ERROR;
     }
 
-  size_t size = 0;
   /* Tokenise command string into file name and arguments. */
   for (arg = strtok_r (cmd_copy, sep, &last);
        arg && argc < (int) argv_size;
@@ -103,15 +106,14 @@ process_execute (const char *command)
     {
       argv[argc] = arg;
       argc++;
-      size += strlen (arg) + 1;
+      stack_size += strlen (arg) + 1;
     }
   
   /* Calculate projected size of stack after setup with args. */
-  size += argc * (int) sizeof (char *);
-  size += NUM_ADDITIONAL_STACK_ADDRS * sizeof (void *);
+  stack_size += argc * (int) sizeof (char *);
 
-  /* Check if size of arguments in command too large. */
-  if (size >= PGSIZE)
+  /* Check if size of arguments in command too large or too many arguments. */
+  if (stack_size >= PGSIZE || arg)
     {
       free (argv);
       palloc_free_page (cmd_copy);
