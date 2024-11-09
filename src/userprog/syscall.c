@@ -90,6 +90,7 @@ validate_user_pointer (const void *uaddr)
   if (!(is_user_vaddr (uaddr) && 
         pagedir_get_page (t->pagedir, uaddr) != NULL))
     {
+      t->exit_status = -1;
       thread_exit ();
     }
 }
@@ -109,6 +110,27 @@ static int
 allocate_fd (void)
 {
   return next_fd++;
+}
+
+static void
+validate_user_buffer (const void *buffer, unsigned size)
+{
+  const uint8_t *ptr = (const uint8_t *) buffer;
+  const uint8_t *end = ptr + size;
+  while (ptr < end)
+    {
+      validate_user_pointer (ptr);
+      /* Advance to next page boundary or end */
+      uintptr_t page_boundary = ((uintptr_t) ptr & ~PGMASK) + PGSIZE;
+      if (page_boundary < (uintptr_t) end)
+        {
+          ptr = (const uint8_t *) page_boundary;
+        }
+      else
+        {
+          ptr = end;
+        }
+    }
 }
 
 /* Hash function for file descriptor. */
@@ -348,6 +370,8 @@ sys_read (void *argv[])
   int fd = (int) argv[0];
   void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
+
+  validate_user_buffer (buffer, size);
   if (fd == 0) 
     {
       // Read from the keyboard
@@ -384,6 +408,7 @@ sys_write (void *argv[])
   const void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
   
+  validate_user_buffer (buffer, size);
   if (fd == STDOUT)
     {
       /* Write to console, CONSOLE_BUFFER_SIZE chars at a time. */
