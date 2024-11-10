@@ -15,7 +15,7 @@
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "threads/fixed-point.h"
-#include "userprog/syscall.c"
+#include "userprog/syscall.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
