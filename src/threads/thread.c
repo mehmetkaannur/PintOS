@@ -15,6 +15,7 @@
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "threads/fixed-point.h"
+#include "userprog/syscall.c"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -307,6 +308,17 @@ thread_start (void)
       PANIC ("Failed to initialise children_map for main thread.");
     }
 
+  bool fd_file_map_success = hash_init (&thread_current ()->fd_file_map,
+                                        fd_hash,
+                                        fd_less,
+                                        NULL);
+  
+  if (!fd_file_map_success)
+    {
+      PANIC ("Failed to initialise fd_file_map for main thread.");
+    }
+  thread_current ()->next_fd = 2;
+
   /* Start preemptive thread scheduling. */
   intr_enable ();
 
@@ -421,17 +433,30 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
-  bool success = hash_init (&t->children_map,
+  bool children_map_success = hash_init (&t->children_map,
                             hash_child_info,
                             less_child_info,
                             NULL);
 
   /* Check if hash_init was successful. */
-  if (!success)
+  if (!children_map_success)
     {
       free (t);
       return TID_ERROR;
     }
+
+  bool fd_file_map_success = hash_init (&t->fd_file_map,
+                            fd_hash,
+                            fd_less,
+                            NULL);
+
+  /* Check if hash_init was successful. */
+  if (!fd_file_map_success)
+    {
+      free (t);
+      return TID_ERROR;
+    }
+  t->next_fd = 2;
 
   tid = t->tid = allocate_tid ();
 

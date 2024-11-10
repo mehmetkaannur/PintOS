@@ -113,6 +113,8 @@ struct thread
                                            for parent. */
     int exit_status;                    /* Exit status of thread
                                           (for child not parent to access). */
+   int next_fd;
+   struct hash fd_file_map;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
