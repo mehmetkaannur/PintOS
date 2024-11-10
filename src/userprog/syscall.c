@@ -197,7 +197,6 @@ void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  // hash_init (&fd_file_map, fd_hash, fd_less, NULL); // initialize hash table for files
   lock_init (&filesys_lock);
 }
 

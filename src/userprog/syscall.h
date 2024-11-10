@@ -18,9 +18,6 @@ struct fd_file {
   struct hash_elem hash_elem;
 };
 
-// Hash table to map file descriptors to file pointers.
-// struct hash fd_file_map;
-
 // Lock structure to synchronize file system operations.
 struct lock filesys_lock;
 
