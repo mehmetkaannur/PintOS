@@ -198,15 +198,21 @@ start_process (void *args_)
   /* If load failed, quit. */
   if (!success) 
     {
-      sema_up (&thread_current ()->child_info->load_sema);
+      if (&thread_current ()->child_info != NULL)
+        {
+          sema_up (&thread_current ()->child_info->load_sema);
+        }
       palloc_free_page (args->argv[0]);
       free (args->argv);
       free (args);
       thread_exit ();
     }
 
-  thread_current ()->child_info->load_success = true;
-  sema_up (&thread_current ()->child_info->load_sema);
+  if (&thread_current ()->child_info != NULL)
+    {
+      thread_current ()->child_info->load_success = true;
+      sema_up (&thread_current ()->child_info->load_sema);
+    }
 
   /* Setup stack with arguments. */
   setup_stack_args (args->argc, args->argv, &if_.esp);
