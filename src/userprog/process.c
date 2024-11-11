@@ -145,11 +145,19 @@ process_execute (const char *command)
   return tid;
 }
 
+/* Push argument arg to stack. */
+static void
+push_to_stack (void *arg, char **esp, size_t size)
+{
+  *esp -= size;
+  memcpy (*esp, &arg, size);
+}
+
 /* Setup stack with arguments according to 80x86 calling convention. */
 static void
 setup_stack_args (int argc, char *argv[], void **sp_)
 {
-  char *argvp[argc];
+  char **argvp = malloc (argc * sizeof (char *));
   char **sp = (char **) sp_;
   size_t arglen;
 
@@ -167,28 +175,24 @@ setup_stack_args (int argc, char *argv[], void **sp_)
   *sp = (void *) ((uintptr_t)(*sp) & ~(uintptr_t) 3);
 
   /* Add null pointer to stack. */
-  *sp -= sizeof (char *);
-  memset (*sp, 0, sizeof (char *));
+  push_to_stack (NULL, sp, sizeof (char *));
 
   /* Add addresses of arguments to stack in right to left order. */
   for (int i = argc - 1; i >= 0; i--)
     {
-      *sp -= sizeof (char *);
-      memcpy (*sp, &argvp[i], sizeof (char *));
+      push_to_stack (argvp[i], sp, sizeof (char *));
     }
 
   /* Add address of array of argument addresses to stack. */
-  char **stack_argvp = (char **) *sp;
-  *sp -= sizeof (char *);
-  memcpy (*sp, &stack_argvp, sizeof (char **));
+  push_to_stack (*sp, sp, sizeof (char **));
 
   /* Add argc value to stack. */
-  *sp -= sizeof (int);
-  memcpy (*sp, &argc, sizeof (int));
+  push_to_stack ((void *) argc, sp, sizeof (int));
 
   /* Add fake return address to stack. */
-  *sp -= sizeof (void *);
-  memset (*sp, 0, sizeof (void *));
+  push_to_stack (NULL, sp, sizeof (void *));
+  
+  free (argvp);
 }
 
 /* A thread function that loads a user process and starts it
