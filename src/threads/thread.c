@@ -128,6 +128,15 @@ child_info_destroy (struct hash_elem *e, void *aux UNUSED)
   free (i);
 }
 
+/* Destroys fd_file struct. */
+static void
+fd_file_destroy (struct hash_elem *e, void *aux UNUSED)
+{
+  struct fd_file *i = hash_entry (e, struct fd_file, hash_elem);
+  file_close (i->file);
+  free (i);
+}
+
 /* Inserts thread into correct queue based on priority.
    This function must be called with interrupts turned off.  */
 static void
@@ -576,16 +585,22 @@ thread_exit (void)
   process_exit ();
 #endif
 
+  struct thread *cur = thread_current ();
+
   /* Destroy this thread's children_map and all child_info structs related
      to children of this thread. */
-  hash_destroy (&thread_current ()->children_map, child_info_destroy);
+  hash_destroy (&cur->children_map, child_info_destroy);
+
+  /* Destroy this thread's fd_file_map and all fd_file structs related
+     to the open files of this thread. */
+  hash_destroy (&cur->fd_file_map, fd_file_destroy);
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  list_remove (&thread_current ()->allelem);
-  thread_current ()->status = THREAD_DYING;
+  list_remove (&cur->allelem);
+  cur->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
 }
