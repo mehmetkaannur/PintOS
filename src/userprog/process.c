@@ -24,32 +24,17 @@
 #include "userprog/syscall.h"
 
 #define NUM_ADDITIONAL_STACK_ADDRS 4
+#define POINTERS_PER_ARG 2
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void setup_stack_args (int argc, char *argv[], void **esp);
-static hash_action_func child_info_destroy;
 
 struct process_args
   {
     char **argv;
     int argc;
   };
-
-/* Destroys child_info struct. */
-static void
-child_info_destroy (struct hash_elem *e, void *aux UNUSED)
-{
-  struct child_info *i = hash_entry (e, struct child_info, elem);
-  
-  /* Mark child as no longer needing to update parent of status. */
-  if (i->child != NULL)
-    {
-      i->child->child_info = NULL;
-    }
-
-  free (i);
-}
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -78,12 +63,15 @@ process_execute (const char *command)
   char *sep = " ";
   char *arg, *last;
   int argc = 0;
-  /* Maximum possible arguments from command string occurs if each character 
-     in cmd_copy is an argument. */
-  size_t max_cmd_args = strlen (cmd_copy);
-  size_t argv_size = max_cmd_args > PGSIZE / (sizeof (char *)) 
-                   ? PGSIZE / (sizeof (char *))
-                   : max_cmd_args;
+  /* Maximum possible arguments from command string occurs if every other
+    character in cmd_copy is an argument (e.g. "a b c d e" has 9 characters
+    and 5 args). */
+  size_t stack_size = NUM_ADDITIONAL_STACK_ADDRS * sizeof (void *);
+  size_t max_cmd_args = (strlen (cmd_copy) + 1) / 2;
+  size_t max_possible_args = (PGSIZE - stack_size) 
+                           / (POINTERS_PER_ARG * sizeof (void *));
+  size_t argv_size = max_cmd_args > max_possible_args
+                   ? max_possible_args : max_cmd_args;
   char **argv = malloc (argv_size * sizeof (char *));
 
   /* Check if malloc was successful. */
@@ -93,7 +81,6 @@ process_execute (const char *command)
       return TID_ERROR;
     }
 
-  size_t size = 0;
   /* Tokenise command string into file name and arguments. */
   for (arg = strtok_r (cmd_copy, sep, &last);
        arg && argc < (int) argv_size;
@@ -101,15 +88,14 @@ process_execute (const char *command)
     {
       argv[argc] = arg;
       argc++;
-      size += strlen (arg) + 1;
+      stack_size += strlen (arg) + 1;
     }
   
   /* Calculate projected size of stack after setup with args. */
-  size += argc * (int) sizeof (char *);
-  size += NUM_ADDITIONAL_STACK_ADDRS * sizeof (void *);
+  stack_size += argc * (int) sizeof (char *);
 
-  /* Check if size of arguments in command too large. */
-  if (size >= PGSIZE)
+  /* Check if size of arguments in command too large or too many arguments. */
+  if (stack_size >= PGSIZE || arg)
     {
       free (argv);
       palloc_free_page (cmd_copy);
@@ -129,6 +115,7 @@ process_execute (const char *command)
 
   args->argc = argc;
   args->argv = argv;
+
   tid = thread_create (argv[0], PRI_DEFAULT, start_process, args);
  
   if (tid == TID_ERROR)
@@ -142,11 +129,19 @@ process_execute (const char *command)
   return tid;
 }
 
+/* Push argument arg to stack. */
+static void
+push_to_stack (void *arg, char **esp, size_t size)
+{
+  *esp -= size;
+  memcpy (*esp, &arg, size);
+}
+
 /* Setup stack with arguments according to 80x86 calling convention. */
 static void
 setup_stack_args (int argc, char *argv[], void **sp_)
 {
-  char *argvp[argc];
+  char **argvp = malloc (argc * sizeof (char *));
   char **sp = (char **) sp_;
   size_t arglen;
 
@@ -164,28 +159,24 @@ setup_stack_args (int argc, char *argv[], void **sp_)
   *sp = (void *) ((uintptr_t)(*sp) & ~(uintptr_t) 3);
 
   /* Add null pointer to stack. */
-  *sp -= sizeof (char *);
-  memset (*sp, 0, sizeof (char *));
+  push_to_stack (NULL, sp, sizeof (char *));
 
   /* Add addresses of arguments to stack in right to left order. */
   for (int i = argc - 1; i >= 0; i--)
     {
-      *sp -= sizeof (char *);
-      memcpy (*sp, &argvp[i], sizeof (char *));
+      push_to_stack (argvp[i], sp, sizeof (char *));
     }
 
   /* Add address of array of argument addresses to stack. */
-  char **stack_argvp = (char **) *sp;
-  *sp -= sizeof (char *);
-  memcpy (*sp, &stack_argvp, sizeof (char **));
+  push_to_stack (*sp, sp, sizeof (char **));
 
   /* Add argc value to stack. */
-  *sp -= sizeof (int);
-  memcpy (*sp, &argc, sizeof (int));
+  push_to_stack ((void *) argc, sp, sizeof (int));
 
   /* Add fake return address to stack. */
-  *sp -= sizeof (void *);
-  memset (*sp, 0, sizeof (void *));
+  push_to_stack (NULL, sp, sizeof (void *));
+  
+  free (argvp);
 }
 
 /* A thread function that loads a user process and starts it
@@ -281,8 +272,6 @@ process_exit (void)
 
   printf("%s: exit(%d)\n", cur->name, cur->exit_status);
   
-  hash_destroy (&cur->children_map, child_info_destroy);
-
   /* Inform parent thread that this process has exited. */
   if (cur->child_info != NULL)
     {
