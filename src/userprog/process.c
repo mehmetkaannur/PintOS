@@ -116,10 +116,6 @@ process_execute (const char *command)
   args->argc = argc;
   args->argv = argv;
 
-  /* Disable interrupts to ensure this thread does not die before storing
-     child_info struct in children_map as otherwise, child_info struct
-     would not be freed. */
-  enum intr_level old_level = intr_disable ();
   tid = thread_create (argv[0], PRI_DEFAULT, start_process, args);
  
   if (tid == TID_ERROR)
@@ -127,21 +123,9 @@ process_execute (const char *command)
       free (args);
       free (argv);
       palloc_free_page (cmd_copy);
-      intr_set_level (old_level);
       return TID_ERROR;
     }
-
-  /* Find child_info struct corresponding to tid. */
-  struct child_info i;
-  i.child_pid = (pid_t) tid;
-  struct hash_elem *e = hash_find (&child_info_map, &i.elem);
-  struct child_info *child_info = hash_entry (e, struct child_info, elem);
-
-  /* Add child_info to parent's children_map field. */
-  hash_insert (&thread_current ()->children_map, &child_info->child_elem);
   
-  intr_set_level (old_level);
-
   return tid;
 }
 
@@ -256,7 +240,7 @@ process_wait (tid_t child_tid)
   struct child_info i;
   i.child_pid = (pid_t) child_tid;
   struct hash_elem *e = hash_find (&thread_current ()->children_map,
-                                   &i.child_elem);
+                                   &i.elem);
 
   /* Current thread does not have child to wait for with tid child_tid. */
   if (e == NULL)
@@ -265,7 +249,7 @@ process_wait (tid_t child_tid)
     }
 
   struct child_info *child_info = hash_entry (e, struct child_info,
-                                              child_elem);
+                                              elem);
   
   /* Wait for child to exit. */
   sema_down (&child_info->exit_sema);
@@ -273,8 +257,7 @@ process_wait (tid_t child_tid)
   int status = child_info->status;
   
   /* Remove child_info from parent's hashmap as waiting only allowed once. */
-  hash_delete (&thread_current ()->children_map, &child_info->child_elem);
-  hash_delete (&child_info_map, &child_info->elem);
+  hash_delete (&thread_current ()->children_map, &child_info->elem);
   free (child_info);
 
   return status;

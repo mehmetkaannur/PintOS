@@ -30,8 +30,6 @@ typedef int tid_t;
 #define NICE_DEFAULT 0                  /* Default nice. */
 #define NICE_MAX 20                     /* Highest nice. */
 
-struct hash child_info_map;             /* Map of child_info structs. */
-
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The

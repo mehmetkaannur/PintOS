@@ -89,50 +89,27 @@ static void threads_update_bsd_priority (void);
 static void thread_update_bsd_priority (struct thread *t, void *aux UNUSED);
 static int bound_nice (int nice);
 
-static hash_hash_func hash_child_info_g;
-static hash_less_func less_child_info_g;
-
 static hash_hash_func hash_child_info;
 static hash_less_func less_child_info;
 
+
 static hash_action_func child_info_destroy;
 
-/* Map from tid to thread. */
-struct hash child_info_map;
-
-/* Hash function for child_info struct (for global child_info_map). */
+/* Hash function for child_info struct. */
 static unsigned
-hash_child_info_g (const struct hash_elem *e, void *aux UNUSED)
+hash_child_info (const struct hash_elem *e, void *aux UNUSED)
 {
   const struct child_info *i = hash_entry (e, struct child_info, elem);
   return hash_int ((int) i->child_pid);
 }
 
-/* Less function for child_info struct (for global child_info_map). */
-static bool
-less_child_info_g (const struct hash_elem *a, const struct hash_elem *b,
-                   void *aux UNUSED)
-{
-  const struct child_info *ia = hash_entry (a, struct child_info, elem);
-  const struct child_info *ib = hash_entry (b, struct child_info, elem);
-  return ia->child_pid < ib->child_pid;
-}
-
-/* Hash function for child_info struct (for parent thread's children_map). */
-static unsigned
-hash_child_info (const struct hash_elem *e, void *aux UNUSED)
-{
-  const struct child_info *i = hash_entry (e, struct child_info, child_elem);
-  return hash_int ((int) i->child_pid);
-}
-
-/* Less function for child_info struct (for parent thread's children_map). */
+/* Less function for child_info struct. */
 static bool
 less_child_info (const struct hash_elem *a, const struct hash_elem *b,
                  void *aux UNUSED)
 {
-  const struct child_info *ia = hash_entry (a, struct child_info, child_elem);
-  const struct child_info *ib = hash_entry (b, struct child_info, child_elem);
+  const struct child_info *ia = hash_entry (a, struct child_info, elem);
+  const struct child_info *ib = hash_entry (b, struct child_info, elem);
   return ia->child_pid < ib->child_pid;
 }
 
@@ -140,9 +117,7 @@ less_child_info (const struct hash_elem *a, const struct hash_elem *b,
 static void
 child_info_destroy (struct hash_elem *e, void *aux UNUSED)
 {
-  /* Remove from child_info_map. */
-  struct child_info *i = hash_entry (e, struct child_info, child_elem);
-  hash_delete (&child_info_map, &i->elem);
+  struct child_info *i = hash_entry (e, struct child_info, elem);
   
   /* Mark child as no longer needing to update parent of status. */
   if (i->child != NULL)
@@ -295,25 +270,8 @@ thread_init (void)
 void
 thread_start (void) 
 {
-  /* Initialise child_info_map. */
-  bool success = hash_init (&child_info_map, 
-                            hash_child_info_g,
-                            less_child_info_g,
-                            NULL);
-
-  /* Check if hash_init was successful. */
-  if (!success)
-    {
-      PANIC ("Failed to initialise child_info_map.");
-    }
-
-  /* Create the idle thread. */
-  struct semaphore idle_started;
-  sema_init (&idle_started, 0);
-  thread_create ("idle", PRI_MIN, idle, &idle_started);
-
   struct thread *t = thread_current ();
-
+  
   /* We assume that this function is only called once ever 
      and that is by the main thread after malloc has been initialised.
      Since the main thread is not created using thread_create,
@@ -322,6 +280,11 @@ thread_start (void)
                                          hash_child_info,
                                          less_child_info,
                                          NULL);
+  
+  /* Create the idle thread. */
+  struct semaphore idle_started;
+  sema_init (&idle_started, 0);
+  thread_create ("idle", PRI_MIN, idle, &idle_started);
 
   /* Check if hash_init was successful. */
   if (!children_map_success)
@@ -520,9 +483,9 @@ thread_create (const char *name, int priority,
   child_info->status = -1;
   t->child_info = child_info;
 
-  /* Insert child_info struct into child_info_map. */
-  hash_insert (&child_info_map, &child_info->elem);
-
+  /* Insert child_info struct into children_map of parent. */
+  hash_insert (&thread_current ()->children_map, &child_info->elem);
+  
   /* Add to run queue. */
   thread_unblock (t);
 
