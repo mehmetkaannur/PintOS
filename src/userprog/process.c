@@ -275,6 +275,7 @@ process_exit (void)
   /* Inform parent thread that this process has exited. */
   if (cur->child_info != NULL)
     {
+      cur->child_info->child = NULL;
       sema_up (&cur->child_info->exit_sema);
     }
 
