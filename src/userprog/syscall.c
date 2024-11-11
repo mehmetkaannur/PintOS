@@ -80,7 +80,6 @@ static struct syscall_info syscall_table[] = {
 
 /* Checks if the pointer given by the user is a valid pointer
    and terminates user process if not. */
-#ifdef USERPROG
 static void
 validate_user_pointer (const void *uaddr)
 {
@@ -92,7 +91,6 @@ validate_user_pointer (const void *uaddr)
       thread_exit ();
     }
 }
-#endif
 
 static void
 check_filename (const char *filename)
@@ -132,23 +130,6 @@ validate_user_buffer (const void *buffer, unsigned size)
     }
 }
 
-/* Hash function for file descriptor. */
-unsigned 
-fd_hash (const struct hash_elem *e, void *aux UNUSED) 
-{
-  const struct fd_file *f = hash_entry (e, struct fd_file, hash_elem);
-  return hash_int (f->fd);
-}
-
-/* Comparison function for file descriptor. */
-bool 
-fd_less (const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED) 
-{
-  const struct fd_file *fa = hash_entry (a, struct fd_file, hash_elem);
-  const struct fd_file *fb = hash_entry (b, struct fd_file, hash_elem);
-  return fa->fd < fb->fd;
-}
-
 /* Add a file descriptor and file pointer to the hash table. */
 void 
 fd_file_map_insert (int fd, struct file *file) 
@@ -169,7 +150,8 @@ fd_file_map_remove (int fd)
 {
   struct fd_file f;
   f.fd = fd;
-  struct hash_elem *e = hash_delete (&thread_current ()->fd_file_map, &f.hash_elem);
+  struct hash_elem *e = hash_delete (&thread_current ()->fd_file_map,
+                                     &f.hash_elem);
   if (e != NULL) {
     struct fd_file *fd_file_entry = hash_entry (e, struct fd_file, hash_elem);
     file_close (fd_file_entry->file);
@@ -183,7 +165,8 @@ get_file_from_fd(int fd)
 {
   struct fd_file f;
   f.fd = fd;
-  struct hash_elem *e = hash_find (&thread_current ()->fd_file_map, &f.hash_elem);
+  struct hash_elem *e = hash_find (&thread_current ()->fd_file_map,
+                                   &f.hash_elem);
   if (e == NULL) 
     {
       return NULL; // File doesn't exist
@@ -206,7 +189,8 @@ syscall_handler (struct intr_frame *f)
   /* Get info for handling syscall based on syscall_number. */
   validate_user_pointer (f->esp);
   int syscall_number = *(int *) f->esp;
-  if (syscall_number < 0 || syscall_number >= sizeof (syscall_table) / sizeof (struct syscall_info))
+  int syscall_entries = sizeof (syscall_table) / sizeof (struct syscall_info);
+  if (syscall_number < 0 || syscall_number >= syscall_entries)
     {
       thread_exit ();
     }
@@ -231,7 +215,7 @@ syscall_handler (struct intr_frame *f)
 static void
 sys_halt (void *argv[] UNUSED)
 {
-  shutdown_power_off();
+  shutdown_power_off ();
 }
 
 static void
@@ -260,8 +244,7 @@ sys_exec (void *argv[])
   /* Wait for child process to finish load attempt. */
   struct child_info i;
   i.child_pid = (pid_t) tid;
-  struct hash_elem *e = hash_find (&thread_current ()->children_map,
-                                   &i.elem);
+  struct hash_elem *e = hash_find (&thread_current ()->children_map, &i.elem);
 
   /* Child thread not created successfully. */
   if (e == NULL)
@@ -269,11 +252,9 @@ sys_exec (void *argv[])
       return -1;
     }
     
-  struct child_info *child_info = hash_entry (e, struct child_info,
-                                              elem);
-  sema_down (&child_info->load_sema);
-
   /* Check if child process loaded successfully. */
+  struct child_info *child_info = hash_entry (e, struct child_info, elem);
+  sema_down (&child_info->load_sema);
   if (!child_info->load_success)
     {
       return -1;

@@ -6,8 +6,6 @@
 #include "filesys/file.h"
 
 void syscall_init (void);
-unsigned fd_hash (const struct hash_elem *e, void *aux);
-bool fd_less (const struct hash_elem *a, const struct hash_elem *b, void *aux);
 void fd_file_map_insert (int fd, struct file *file);
 void fd_file_map_remove (int fd);
 
