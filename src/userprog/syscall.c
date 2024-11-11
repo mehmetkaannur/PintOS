@@ -152,24 +152,27 @@ fd_file_map_remove (int fd)
   f.fd = fd;
   struct hash_elem *e = hash_delete (&thread_current ()->fd_file_map,
                                      &f.hash_elem);
-  if (e != NULL) {
-    struct fd_file *fd_file_entry = hash_entry (e, struct fd_file, hash_elem);
-    file_close (fd_file_entry->file);
-    free (fd_file_entry);
-  }
+  if (e != NULL)
+    {
+      struct fd_file *fd_file_entry = hash_entry (e, struct fd_file,
+                                                  hash_elem);
+      file_close (fd_file_entry->file);
+      free (fd_file_entry);
+    }
 }
 
 /* Helper function to get a file from the hash table of open files. */
 static struct file *
-get_file_from_fd(int fd)
+get_file_from_fd (int fd)
 {
   struct fd_file f;
   f.fd = fd;
   struct hash_elem *e = hash_find (&thread_current ()->fd_file_map,
                                    &f.hash_elem);
+  /* Check if file exists in hashmap. */
   if (e == NULL) 
     {
-      return NULL; // File doesn't exist
+      return NULL;
     }
   struct fd_file *fd_file_entry = hash_entry (e, struct fd_file, hash_elem);
   // TODO: do we need to check if fd_file_entry is NULL?
@@ -313,7 +316,7 @@ sys_open (void *argv[])
       return INVALID_FD; // File could not be opened
     }
 
-  // Allocate a new file descriptor
+  /* Allocate a new file descriptor */
   int fd = allocate_fd ();
   if (fd == -1) 
     {
@@ -351,16 +354,16 @@ sys_read (void *argv[])
   unsigned size = (unsigned) argv[2];
 
   validate_user_buffer (buffer, size);
-  if (fd == 0) 
+  if (fd == STDIN) 
     {
-      // Read from the keyboard
+      /* Read from STDIN. */
       unsigned i;
       for (i = 0; i < size; i++) {
         ((char *)buffer)[i] = input_getc ();
       }
       return size;
     }
-  else if (fd == 1)
+  else if (fd == STDOUT)
     {
       return -1;
     }
@@ -423,18 +426,25 @@ sys_seek (void *argv[])
 {
   int fd = (int) argv[0];
   unsigned position = (unsigned) argv[1];
-  if (fd == 0 || fd == 1) 
+
+  if (fd == STDIN || fd == STDOUT) 
     {
       return;
     }
+
   lock_acquire (&filesys_lock);
+
+  /* Get the file from the file descriptor */
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
       lock_release (&filesys_lock);
       return;
     }
-  file_seek (file, position); // change the file position
+
+  /* Change the file position. */
+  file_seek (file, position);
+
   lock_release (&filesys_lock);
 }
 
@@ -442,22 +452,27 @@ static unsigned
 sys_tell (void *argv[])
 {
   int fd = (int) argv[0];
-  if (fd == 0 || fd == 1) 
+
+  if (fd == STDIN || fd == STDOUT) 
     {
       return -1;
     }
-  lock_acquire (&filesys_lock);
-  struct file *file = get_file_from_fd (fd);
 
+  lock_acquire (&filesys_lock);
+
+  /* Get the file from the file descriptor */
+  struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
       lock_release (&filesys_lock);
       return INVALID_FD;
     }
   
-  // Return the position of the next byte to be read or written
+  /* Return the position of the next byte to be read or written */
   unsigned pos = file_tell (file);
+  
   lock_release (&filesys_lock);
+
   return pos;
 }
 
@@ -465,10 +480,13 @@ static void
 sys_close (void *argv[])
 {
   int fd = (int) argv[0];
-  if (fd <= STDOUT) // STDIN (0) and STDOUT (1) cannot be closed
+  /* STDIN (0) and STDOUT (1) cannot be closed */
+  if (fd <= STDOUT)
     {
       return;
     }
+  
+  /* Remove the file descriptor from the hash table */
   lock_acquire (&filesys_lock);
   fd_file_map_remove (fd);
   lock_release (&filesys_lock);
