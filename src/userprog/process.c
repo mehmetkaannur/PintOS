@@ -40,9 +40,7 @@ struct process_args
 static void
 child_info_destroy (struct hash_elem *e, void *aux UNUSED)
 {
-  /* Remove from child_info_map. */
-  hash_delete (&child_info_map, e);
-  struct child_info *i = hash_entry (e, struct child_info, child_elem);
+  struct child_info *i = hash_entry (e, struct child_info, elem);
   
   /* Mark child as no longer needing to update parent of status. */
   if (i->child != NULL)
@@ -140,15 +138,6 @@ process_execute (const char *command)
       palloc_free_page (cmd_copy);
       return TID_ERROR;
     }
-
-  /* Find child_info struct corresponding to tid. */
-  struct child_info i;
-  i.child_pid = (pid_t) tid;
-  struct hash_elem *e = hash_find (&child_info_map, &i.elem);
-  struct child_info *child_info = hash_entry (e, struct child_info, elem);
-
-  /* Add child_info to parent's children_map field. */
-  hash_insert (&thread_current ()->children_map, &child_info->child_elem);
   
   return tid;
 }
@@ -260,7 +249,7 @@ process_wait (tid_t child_tid)
   struct child_info i;
   i.child_pid = (pid_t) child_tid;
   struct hash_elem *e = hash_find (&thread_current ()->children_map,
-                                   &i.child_elem);
+                                   &i.elem);
 
   /* Current thread does not have child to wait for with tid child_tid. */
   if (e == NULL)
@@ -269,7 +258,7 @@ process_wait (tid_t child_tid)
     }
 
   struct child_info *child_info = hash_entry (e, struct child_info,
-                                              child_elem);
+                                              elem);
   
   /* Wait for child to exit. */
   sema_down (&child_info->exit_sema);
@@ -277,8 +266,7 @@ process_wait (tid_t child_tid)
   int status = child_info->status;
   
   /* Remove child_info from parent's hashmap as waiting only allowed once. */
-  hash_delete (&thread_current ()->children_map, &child_info->child_elem);
-  hash_delete (&child_info_map, &child_info->elem);
+  hash_delete (&thread_current ()->children_map, &child_info->elem);
   free (child_info);
 
   return status;
