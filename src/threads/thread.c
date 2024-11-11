@@ -140,13 +140,15 @@ child_info_destroy (struct hash_elem *e, void *aux UNUSED)
 {
   struct child_info *i = hash_entry (e, struct child_info, elem);
   
-  /* Mark child as no longer needing to update parent of status. */
-  if (i->child != NULL)
+  /* If child does not exist, since parent is dying, free child_info. */
+  if (!i->child_exists)
     {
-      i->child->child_info = NULL;
+      free (i);
     }
-
-  free (i);
+  else
+    {
+      i->parent_exists = false;
+    }
 }
 
 /* Destroys fd_file struct. */
@@ -488,7 +490,6 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
-  intr_set_level (old_level);
 
   /* Initialise child_info struct. */
   struct child_info *child_info = malloc (sizeof (struct child_info));
@@ -500,15 +501,20 @@ thread_create (const char *name, int priority,
     }
 
   child_info->child_pid = tid;
-  child_info->child = t;
   child_info->load_success = false;
   sema_init (&child_info->load_sema, 0);
   sema_init (&child_info->exit_sema, 0);
   child_info->status = -1;
+  child_info->parent_exists = true;
+  child_info->child_exists = true;
   t->child_info = child_info;
 
   /* Insert child_info struct into children_map of parent. */
   hash_insert (&thread_current ()->children_map, &child_info->elem);
+  
+  /* IS THIS NECESSARY? COULD PARENT PROCESS BE KILLED BEFORE INSERTION
+     AND THEN CHILD_INFO NEVER FREED? */
+  intr_set_level (old_level);
   
   /* Add to run queue. */
   thread_unblock (t);
@@ -601,6 +607,21 @@ thread_exit (void)
 #endif
 
   struct thread *cur = thread_current ();
+  
+  /* MUTUAL EXCLUSION REQUIRED HERE TO PREVENT CHILD_INFO BEING FREED BY
+     PARENT ON NEXT LINE. */
+  cur->child_info->child_exists = false;
+
+  /* Inform parent thread that this process has exited. */
+  if (cur->child_info->parent_exists)
+    {
+      sema_up (&cur->child_info->exit_sema);
+    }
+  /* If both parent and child have died, free child_info struct. */
+  else
+    {
+      free (cur->child_info);
+    }
 
   /* Destroy this thread's children_map and all child_info structs related
      to children of this thread. */
@@ -899,7 +920,6 @@ init_thread (struct thread *t, const char *name, int priority)
   t->waiting_sema = NULL;
   t->waiting_lock = NULL;
   t->magic = THREAD_MAGIC;
-  t->exit_status = -1;
   list_init (&t->locks);
 
   old_level = intr_disable ();

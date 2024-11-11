@@ -87,7 +87,6 @@ validate_user_pointer (const void *uaddr)
   if (!(is_user_vaddr (uaddr) && 
         pagedir_get_page (t->pagedir, uaddr) != NULL))
     {
-      t->exit_status = -1;
       thread_exit ();
     }
 }
@@ -226,14 +225,8 @@ sys_exit (void *argv[])
 {
   int status = (int) argv[0];
 
-  struct thread *cur = thread_current ();
-  
   /* Set exit status for thread. */
-  cur->exit_status = status;
-  if (cur->child_info != NULL)
-    {
-      cur->child_info->status = status;
-    }
+  thread_current ()->child_info->status = status;
 
   thread_exit ();
 }

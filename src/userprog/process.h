@@ -10,13 +10,14 @@
 struct child_info
   {
     pid_t child_pid;               /* Child's process id. */
-    struct thread *child;          /* Pointer to child's thread. */
     struct semaphore load_sema;    /* Semaphore to indicate child
                                       process has loaded. */
     struct semaphore exit_sema;    /* Semaphore to indicate child
                                       process has exited. */
     struct hash_elem elem;         /* Hash elem for parent's children_map. */
     bool load_success;             /* Indicates if child process loaded. */
+    bool parent_exists;            /* Indicates if parent still exists. */
+    bool child_exists;             /* Indicates if child still exists. */
     int status;                    /* Exit status of child. */
   };
 

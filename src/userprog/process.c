@@ -260,7 +260,8 @@ process_wait (tid_t child_tid)
 
   int status = child_info->status;
   
-  /* Remove child_info from parent's hashmap as waiting only allowed once. */
+  /* Remove child_info from parent's hashmap as waiting only allowed once. 
+     Since child has exited, this parent thread can safely free child_info. */
   hash_delete (&thread_current ()->children_map, &child_info->elem);
   free (child_info);
 
@@ -274,14 +275,7 @@ process_exit (void)
   struct thread *cur = thread_current ();
 
   /* Print termination message. */
-  printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
-  
-  /* Inform parent thread that this process has exited. */
-  if (cur->child_info != NULL)
-    {
-      cur->child_info->child = NULL;
-      sema_up (&cur->child_info->exit_sema);
-    }
+  printf ("%s: exit(%d)\n", cur->name, cur->child_info->status);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
