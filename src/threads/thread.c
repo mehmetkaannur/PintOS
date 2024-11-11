@@ -94,6 +94,8 @@ static hash_less_func less_child_info_g;
 static hash_hash_func hash_child_info;
 static hash_less_func less_child_info;
 
+static hash_action_func child_info_destroy;
+
 /* Map from tid to thread. */
 struct hash child_info_map;
 
@@ -131,6 +133,23 @@ less_child_info (const struct hash_elem *a, const struct hash_elem *b,
   const struct child_info *ia = hash_entry (a, struct child_info, child_elem);
   const struct child_info *ib = hash_entry (b, struct child_info, child_elem);
   return ia->child_pid < ib->child_pid;
+}
+
+/* Destroys child_info struct. */
+static void
+child_info_destroy (struct hash_elem *e, void *aux UNUSED)
+{
+  /* Remove from child_info_map. */
+  struct child_info *i = hash_entry (e, struct child_info, child_elem);
+  hash_delete (&child_info_map, &i->elem);
+  
+  /* Mark child as no longer needing to update parent of status. */
+  if (i->child != NULL)
+    {
+      i->child->child_info = NULL;
+    }
+
+  free (i);
 }
 
 /* Inserts thread into correct queue based on priority.
@@ -566,6 +585,10 @@ thread_exit (void)
 #ifdef USERPROG
   process_exit ();
 #endif
+
+  /* Destroy this thread's children_map and all child_info structs related
+     to children of this thread. */
+  hash_destroy (&thread_current ()->children_map, child_info_destroy);
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us

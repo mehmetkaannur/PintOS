@@ -29,30 +29,12 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void setup_stack_args (int argc, char *argv[], void **esp);
-static hash_action_func child_info_destroy;
 
 struct process_args
   {
     char **argv;
     int argc;
   };
-
-/* Destroys child_info struct. */
-static void
-child_info_destroy (struct hash_elem *e, void *aux UNUSED)
-{
-  /* Remove from child_info_map. */
-  hash_delete (&child_info_map, e);
-  struct child_info *i = hash_entry (e, struct child_info, child_elem);
-  
-  /* Mark child as no longer needing to update parent of status. */
-  if (i->child != NULL)
-    {
-      i->child->child_info = NULL;
-    }
-
-  free (i);
-}
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -133,6 +115,11 @@ process_execute (const char *command)
 
   args->argc = argc;
   args->argv = argv;
+
+  /* Disable interrupts to ensure this thread does not die before storing
+     child_info struct in children_map as otherwise, child_info struct
+     would not be freed. */
+  enum intr_level old_level = intr_disable ();
   tid = thread_create (argv[0], PRI_DEFAULT, start_process, args);
  
   if (tid == TID_ERROR)
@@ -140,6 +127,7 @@ process_execute (const char *command)
       free (args);
       free (argv);
       palloc_free_page (cmd_copy);
+      intr_set_level (old_level);
       return TID_ERROR;
     }
 
@@ -152,6 +140,8 @@ process_execute (const char *command)
   /* Add child_info to parent's children_map field. */
   hash_insert (&thread_current ()->children_map, &child_info->child_elem);
   
+  intr_set_level (old_level);
+
   return tid;
 }
 
@@ -295,8 +285,6 @@ process_exit (void)
 
   printf("%s: exit(%d)\n", cur->name, cur->exit_status);
   
-  hash_destroy (&cur->children_map, child_info_destroy);
-
   /* Inform parent thread that this process has exited. */
   if (cur->child_info != NULL)
     {
