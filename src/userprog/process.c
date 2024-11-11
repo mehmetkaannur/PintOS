@@ -198,15 +198,21 @@ start_process (void *args_)
   /* If load failed, quit. */
   if (!success) 
     {
-      sema_up (&thread_current ()->child_info->load_sema);
+      if (&thread_current ()->child_info != NULL)
+        {
+          sema_up (&thread_current ()->child_info->load_sema);
+        }
       palloc_free_page (args->argv[0]);
       free (args->argv);
       free (args);
       thread_exit ();
     }
 
-  thread_current ()->child_info->load_success = true;
-  sema_up (&thread_current ()->child_info->load_sema);
+  if (&thread_current ()->child_info != NULL)
+    {
+      thread_current ()->child_info->load_success = true;
+      sema_up (&thread_current ()->child_info->load_sema);
+    }
 
   /* Setup stack with arguments. */
   setup_stack_args (args->argc, args->argv, &if_.esp);
@@ -239,8 +245,7 @@ process_wait (tid_t child_tid)
 {
   struct child_info i;
   i.child_pid = (pid_t) child_tid;
-  struct hash_elem *e = hash_find (&thread_current ()->children_map,
-                                   &i.elem);
+  struct hash_elem *e = hash_find (&thread_current ()->children_map, &i.elem);
 
   /* Current thread does not have child to wait for with tid child_tid. */
   if (e == NULL)
@@ -248,8 +253,7 @@ process_wait (tid_t child_tid)
       return -1;
     }
 
-  struct child_info *child_info = hash_entry (e, struct child_info,
-                                              elem);
+  struct child_info *child_info = hash_entry (e, struct child_info, elem);
   
   /* Wait for child to exit. */
   sema_down (&child_info->exit_sema);
@@ -268,18 +272,20 @@ void
 process_exit (void)
 {
   struct thread *cur = thread_current ();
-  uint32_t *pd;
 
-  printf("%s: exit(%d)\n", cur->name, cur->exit_status);
+  /* Print termination message. */
+  printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
   
   /* Inform parent thread that this process has exited. */
   if (cur->child_info != NULL)
     {
+      cur->child_info->child = NULL;
       sema_up (&cur->child_info->exit_sema);
     }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
+  uint32_t *pd;
   pd = cur->pagedir;
   if (pd != NULL) 
     {

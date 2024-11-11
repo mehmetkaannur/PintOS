@@ -111,10 +111,10 @@ struct thread
                                            for parent. */
     int exit_status;                    /* Exit status of thread
                                           (for child not parent to access). */
-   int next_fd;                        /* Variable to keep track of the next file 
-                                          descriptor. */
-   struct hash fd_file_map;            /* Hashmap from file descriptors to file 
-                                          pointers. */
+    int next_fd;                        /* Variable to keep track of the next
+                                          file descriptor. */
+    struct hash fd_file_map;            /* Hashmap from file descriptors to
+                                           file pointers. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

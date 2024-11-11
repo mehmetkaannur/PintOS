@@ -91,9 +91,30 @@ static int bound_nice (int nice);
 
 static hash_hash_func hash_child_info;
 static hash_less_func less_child_info;
-
-
 static hash_action_func child_info_destroy;
+
+static unsigned fd_hash (const struct hash_elem *e, void *aux UNUSED);
+static bool fd_less (const struct hash_elem *a, const struct hash_elem *b,
+                     void *aux UNUSED);
+static hash_action_func fd_file_destroy;
+
+/* Hash function for file descriptor. */
+unsigned 
+fd_hash (const struct hash_elem *e, void *aux UNUSED) 
+{
+  const struct fd_file *f = hash_entry (e, struct fd_file, hash_elem);
+  return hash_int (f->fd);
+}
+
+/* Comparison function for file descriptor. */
+bool 
+fd_less (const struct hash_elem *a, const struct hash_elem *b,
+         void *aux UNUSED) 
+{
+  const struct fd_file *fa = hash_entry (a, struct fd_file, hash_elem);
+  const struct fd_file *fb = hash_entry (b, struct fd_file, hash_elem);
+  return fa->fd < fb->fd;
+}
 
 /* Hash function for child_info struct. */
 static unsigned
@@ -301,10 +322,8 @@ thread_start (void)
       PANIC ("Failed to initialise children_map for main thread.");
     }
 
-  bool fd_file_map_success = hash_init (&t->fd_file_map,
-                                        fd_hash,
-                                        fd_less,
-                                        NULL);
+  bool fd_file_map_success = hash_init (&t->fd_file_map, fd_hash,
+                                        fd_less, NULL);
   
   if (!fd_file_map_success)
     {
@@ -426,10 +445,8 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
-  bool children_map_success = hash_init (&t->children_map,
-                            hash_child_info,
-                            less_child_info,
-                            NULL);
+  bool children_map_success = hash_init (&t->children_map, hash_child_info,
+                                         less_child_info, NULL);
 
   /* Check if hash_init was successful. */
   if (!children_map_success)
@@ -438,10 +455,8 @@ thread_create (const char *name, int priority,
       return TID_ERROR;
     }
 
-  bool fd_file_map_success = hash_init (&t->fd_file_map,
-                            fd_hash,
-                            fd_less,
-                            NULL);
+  bool fd_file_map_success = hash_init (&t->fd_file_map, fd_hash, 
+                                        fd_less, NULL);
 
   /* Check if hash_init was successful. */
   if (!fd_file_map_success)
