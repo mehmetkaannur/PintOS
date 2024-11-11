@@ -20,8 +20,6 @@
 #define STDIN 0
 #define STDOUT 1
 
-static int next_fd = 2; /* Next available file descriptor. 0 and 1 are reserved. */
-
 /* Functions to handle syscalls. */
 static void sys_halt (void *argv[] UNUSED);
 static void sys_exit (void *argv[]);
@@ -109,7 +107,8 @@ check_filename (const char *filename)
 static int
 allocate_fd (void)
 {
-  return next_fd++;
+  struct thread *t = thread_current ();
+  return t->next_fd++;
 }
 
 static void
@@ -161,7 +160,7 @@ fd_file_map_insert (int fd, struct file *file)
     }
   f->fd = fd;
   f->file = file;
-  hash_insert (&fd_file_map, &f->hash_elem);
+  hash_insert (&thread_current ()->fd_file_map, &f->hash_elem);
 }
 
 /* Remove a file descriptor and file pointer from the hash table. */
@@ -170,7 +169,7 @@ fd_file_map_remove (int fd)
 {
   struct fd_file f;
   f.fd = fd;
-  struct hash_elem *e = hash_delete (&fd_file_map, &f.hash_elem);
+  struct hash_elem *e = hash_delete (&thread_current ()->fd_file_map, &f.hash_elem);
   if (e != NULL) {
     struct fd_file *fd_file_entry = hash_entry (e, struct fd_file, hash_elem);
     file_close (fd_file_entry->file);
@@ -184,7 +183,7 @@ get_file_from_fd(int fd)
 {
   struct fd_file f;
   f.fd = fd;
-  struct hash_elem *e = hash_find (&fd_file_map, &f.hash_elem);
+  struct hash_elem *e = hash_find (&thread_current ()->fd_file_map, &f.hash_elem);
   if (e == NULL) 
     {
       return NULL; // File doesn't exist
@@ -198,7 +197,6 @@ void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  hash_init (&fd_file_map, fd_hash, fd_less, NULL); // initialize hash table for files
   lock_init (&filesys_lock);
 }
 
@@ -233,7 +231,7 @@ syscall_handler (struct intr_frame *f)
 static void
 sys_halt (void *argv[] UNUSED)
 {
-  
+  shutdown_power_off();
 }
 
 static void
@@ -486,6 +484,13 @@ static void
 sys_close (void *argv[])
 {
   int fd = (int) argv[0];
+  if (fd <= STDOUT) // STDIN (0) and STDOUT (1) cannot be closed
+    {
+      return;
+    }
+  lock_acquire (&filesys_lock);
+  fd_file_map_remove (fd);
+  lock_release (&filesys_lock);
 }
 
 static mapid_t

@@ -15,6 +15,7 @@
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "threads/fixed-point.h"
+#include "userprog/syscall.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -311,11 +312,13 @@ thread_start (void)
   sema_init (&idle_started, 0);
   thread_create ("idle", PRI_MIN, idle, &idle_started);
 
+  struct thread *t = thread_current ();
+
   /* We assume that this function is only called once ever 
      and that is by the main thread after malloc has been initialised.
      Since the main thread is not created using thread_create,
      we need to initialise its children map and do so here. */
-  bool children_map_success = hash_init (&thread_current ()->children_map,
+  bool children_map_success = hash_init (&t->children_map,
                                          hash_child_info,
                                          less_child_info,
                                          NULL);
@@ -325,6 +328,17 @@ thread_start (void)
     {
       PANIC ("Failed to initialise children_map for main thread.");
     }
+
+  bool fd_file_map_success = hash_init (&t->fd_file_map,
+                                        fd_hash,
+                                        fd_less,
+                                        NULL);
+  
+  if (!fd_file_map_success)
+    {
+      PANIC ("Failed to initialise fd_file_map for main thread.");
+    }
+  t->next_fd = 2;
 
   /* Start preemptive thread scheduling. */
   intr_enable ();
@@ -440,17 +454,30 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
-  bool success = hash_init (&t->children_map,
+  bool children_map_success = hash_init (&t->children_map,
                             hash_child_info,
                             less_child_info,
                             NULL);
 
   /* Check if hash_init was successful. */
-  if (!success)
+  if (!children_map_success)
     {
       free (t);
       return TID_ERROR;
     }
+
+  bool fd_file_map_success = hash_init (&t->fd_file_map,
+                            fd_hash,
+                            fd_less,
+                            NULL);
+
+  /* Check if hash_init was successful. */
+  if (!fd_file_map_success)
+    {
+      free (t);
+      return TID_ERROR;
+    }
+  t->next_fd = 2;
 
   tid = t->tid = allocate_tid ();
 
