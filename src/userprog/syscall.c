@@ -261,7 +261,7 @@ sys_exec (void *argv[])
   struct child_info i;
   i.child_pid = (pid_t) tid;
   struct hash_elem *e = hash_find (&thread_current ()->children_map,
-                                   &i.child_elem);
+                                   &i.elem);
 
   /* Child thread not created successfully. */
   if (e == NULL)
@@ -270,7 +270,7 @@ sys_exec (void *argv[])
     }
     
   struct child_info *child_info = hash_entry (e, struct child_info,
-                                              child_elem);
+                                              elem);
   sema_down (&child_info->load_sema);
 
   /* Check if child process loaded successfully. */
