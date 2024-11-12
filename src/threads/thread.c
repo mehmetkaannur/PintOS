@@ -140,14 +140,25 @@ child_info_destroy (struct hash_elem *e, void *aux UNUSED)
 {
   struct child_info *i = hash_entry (e, struct child_info, elem);
   
+  bool should_free = false;
+  lock_acquire (&i->exists_lock);
   /* If child does not exist, since parent is dying, free child_info. */
-  if (!i->child_exists)
+  if (i->child_exists)
     {
-      free (i);
+      i->parent_exists = false;
     }
   else
     {
-      i->parent_exists = false;
+      should_free = true;
+    }
+  lock_release (&i->exists_lock);
+
+  /* We do not have to worry about the child thread accessing child_info
+     struct after free because it is necessarily dead (or won't access the
+     child_info struct again at least). */ 
+  if (should_free)
+    {
+      free (i);
     }
 }
 
@@ -504,6 +515,7 @@ thread_create (const char *name, int priority,
   child_info->load_success = false;
   sema_init (&child_info->load_sema, 0);
   sema_init (&child_info->exit_sema, 0);
+  lock_init (&child_info->exists_lock);
   child_info->status = -1;
   child_info->parent_exists = true;
   child_info->child_exists = true;
@@ -515,7 +527,7 @@ thread_create (const char *name, int priority,
   /* IS THIS NECESSARY? COULD PARENT PROCESS BE KILLED BEFORE INSERTION
      AND THEN CHILD_INFO NEVER FREED? */
   intr_set_level (old_level);
-  
+
   /* Add to run queue. */
   thread_unblock (t);
 
@@ -608,17 +620,26 @@ thread_exit (void)
 
   struct thread *cur = thread_current ();
   
-  /* MUTUAL EXCLUSION REQUIRED HERE TO PREVENT CHILD_INFO BEING FREED BY
-     PARENT ON NEXT LINE. */
-  cur->child_info->child_exists = false;
+  bool should_free = false;
 
+  lock_acquire (&cur->child_info->exists_lock);  
   /* Inform parent thread that this process has exited. */
   if (cur->child_info->parent_exists)
     {
       sema_up (&cur->child_info->exit_sema);
+      cur->child_info->child_exists = false;
     }
-  /* If both parent and child have died, free child_info struct. */
+  /* If both parent and child have died, should free child_info struct. */
   else
+    {
+      should_free = true;
+    }
+  lock_release (&cur->child_info->exists_lock);
+
+  /* We do not have to worry about the parent thread accessing child_info
+     struct after free because it is necessarily dead (or won't access the
+     child_info struct again at least). */ 
+  if (should_free)
     {
       free (cur->child_info);
     }

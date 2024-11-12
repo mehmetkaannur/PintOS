@@ -14,6 +14,8 @@ struct child_info
                                       process has loaded. */
     struct semaphore exit_sema;    /* Semaphore to indicate child
                                       process has exited. */
+    struct lock exists_lock;       /* Lock to protect parent_exists and 
+                                      child_exists. */
     struct hash_elem elem;         /* Hash elem for parent's children_map. */
     bool load_success;             /* Indicates if child process loaded. */
     bool parent_exists;            /* Indicates if parent still exists. */
