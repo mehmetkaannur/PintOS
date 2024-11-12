@@ -94,6 +94,7 @@ validate_user_pointer (const void *uaddr)
     }
 }
 
+/* Returns a new file descriptor for the current thread to use. */
 static int
 allocate_fd (void)
 {
@@ -178,6 +179,7 @@ syscall_init (void)
   lock_init (&filesys_lock);
 }
 
+/* Handles system calls based on intr_frame f. */
 static void
 syscall_handler (struct intr_frame *f) 
 {
@@ -207,12 +209,14 @@ syscall_handler (struct intr_frame *f)
     }
 }
 
+/* Helper function for halt system call. */
 static void
 sys_halt (void *argv[] UNUSED)
 {
   shutdown_power_off ();
 }
 
+/* Helper function for exit system call. */
 static void
 sys_exit (void *argv[])
 {
@@ -224,6 +228,7 @@ sys_exit (void *argv[])
   thread_exit ();
 }
 
+/* Helper function for exec system call. */
 static pid_t
 sys_exec (void *argv[])
 {
@@ -252,6 +257,7 @@ sys_exec (void *argv[])
   return tid;
 }
 
+/* Helper function for wait system call. */
 static int
 sys_wait (void *argv[])
 {
@@ -259,6 +265,7 @@ sys_wait (void *argv[])
   return process_wait (pid);
 }
 
+/* Helper function for create system call. */
 static bool
 sys_create (void *argv[])
 {
@@ -275,10 +282,11 @@ sys_create (void *argv[])
   lock_acquire (&filesys_lock);
   bool success = filesys_create (file, initial_size);
   lock_release (&filesys_lock);
-  
+
   return success;
 }
 
+/* Helper function for remove system call. */
 static bool
 sys_remove (void *argv[])
 {
@@ -293,6 +301,7 @@ sys_remove (void *argv[])
   return success;
 }
 
+/* Helper function for open system call. */
 static int
 sys_open (void *argv[])
 {
@@ -321,6 +330,7 @@ sys_open (void *argv[])
   return fd;
 }
 
+/* Helper function for filesize system call. */
 static int
 sys_filesize (void *argv[])
 {
@@ -338,6 +348,7 @@ sys_filesize (void *argv[])
   return size;
 }
 
+/* Helper function for read system call. */
 static int
 sys_read (void *argv[])
 {
@@ -373,6 +384,7 @@ sys_read (void *argv[])
   return bytes_read;
 }
 
+/* Helper function for write system call. */
 static int
 sys_write (void *argv[])
 {
@@ -413,6 +425,7 @@ sys_write (void *argv[])
   return bytes_write;
 }
 
+/* Helper function for seek system call. */
 static void
 sys_seek (void *argv[])
 {
@@ -440,6 +453,7 @@ sys_seek (void *argv[])
   lock_release (&filesys_lock);
 }
 
+/* Helper function for tell system call. */
 static unsigned
 sys_tell (void *argv[])
 {
@@ -468,6 +482,7 @@ sys_tell (void *argv[])
   return pos;
 }
 
+/* Helper function for close system call. */
 static void
 sys_close (void *argv[])
 {
