@@ -99,7 +99,7 @@ static bool fd_less (const struct hash_elem *a, const struct hash_elem *b,
 static hash_action_func fd_file_destroy;
 
 /* Hash function for file descriptor. */
-unsigned 
+static unsigned 
 fd_hash (const struct hash_elem *e, void *aux UNUSED) 
 {
   const struct fd_file *f = hash_entry (e, struct fd_file, hash_elem);
@@ -107,7 +107,7 @@ fd_hash (const struct hash_elem *e, void *aux UNUSED)
 }
 
 /* Comparison function for file descriptor. */
-bool 
+static bool 
 fd_less (const struct hash_elem *a, const struct hash_elem *b,
          void *aux UNUSED) 
 {

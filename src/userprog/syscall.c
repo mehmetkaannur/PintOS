@@ -46,6 +46,9 @@ static void syscall_handler (struct intr_frame *);
 
 typedef void *(*syscall_func_t) (void *argv[]);
 
+static void fd_file_map_insert (int fd, struct file *file);
+static void fd_file_map_remove (int fd);
+
 /* Entry with information on how to handle syscall. */
 struct syscall_info
   {

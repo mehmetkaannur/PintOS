@@ -6,17 +6,15 @@
 #include "filesys/file.h"
 
 void syscall_init (void);
-void fd_file_map_insert (int fd, struct file *file);
-void fd_file_map_remove (int fd);
 
-// Structure to hold file descriptor and file pointer.
+/* File with file descriptor (fd). */
 struct fd_file {
-  int fd;
-  struct file *file;
-  struct hash_elem hash_elem;
+  int fd;                               /* File descriptor. */
+  struct file *file;                    /* File pointer. */ 
+  struct hash_elem hash_elem;           /* Hash element. */
 };
 
-// Lock structure to synchronize file system operations.
+/* Lock to synchronize file system operations. */
 struct lock filesys_lock;
 
 #endif /* userprog/syscall.h */
