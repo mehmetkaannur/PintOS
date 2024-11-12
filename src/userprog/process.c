@@ -102,7 +102,7 @@ process_execute (const char *command)
       return TID_ERROR;
     }
   
-  /* Create a new thread to execute command. */
+  /* Create struct to pass arguments to start_process. */
   struct process_args *args = malloc (sizeof (struct process_args));
 
   /* Check if malloc was successful. */
@@ -118,6 +118,7 @@ process_execute (const char *command)
 
   tid = thread_create (argv[0], PRI_DEFAULT, start_process, args);
  
+  /* Check if thread_create was successful. */
   if (tid == TID_ERROR)
     {
       free (args);
@@ -142,6 +143,13 @@ static void
 setup_stack_args (int argc, char *argv[], void **sp_)
 {
   char **argvp = malloc (argc * sizeof (char *));
+  
+  /* Check if malloc was successful. */
+  if (argvp == NULL)
+    {
+      return;
+    }
+
   char **sp = (char **) sp_;
   size_t arglen;
 
@@ -150,8 +158,8 @@ setup_stack_args (int argc, char *argv[], void **sp_)
     {
       arglen = strlen (argv[i]) + 1; 
       *sp -= arglen;
-
       strlcpy (*sp, argv[i], arglen);
+      
       argvp[i] = *sp;
     }
   
@@ -198,21 +206,16 @@ start_process (void *args_)
   /* If load failed, quit. */
   if (!success) 
     {
-      if (&thread_current ()->child_info != NULL)
-        {
-          sema_up (&thread_current ()->child_info->load_sema);
-        }
+      sema_up (&thread_current()->child_info->load_sema);
       palloc_free_page (args->argv[0]);
       free (args->argv);
       free (args);
       thread_exit ();
     }
 
-  if (&thread_current ()->child_info != NULL)
-    {
-      thread_current ()->child_info->load_success = true;
-      sema_up (&thread_current ()->child_info->load_sema);
-    }
+  /* Indicate to parent that load was successful. */
+  thread_current ()->child_info->load_success = true;
+  sema_up (&thread_current ()->child_info->load_sema);
 
   /* Setup stack with arguments. */
   setup_stack_args (args->argc, args->argv, &if_.esp);
@@ -236,10 +239,7 @@ start_process (void *args_)
  * returns -1.  
  * If TID is invalid or if it was not a child of the calling process, or if 
  * process_wait() has already been successfully called for the given TID, 
- * returns -1 immediately, without waiting.
- * 
- * This function will be implemented in task 2.
- * For now, it does nothing. */
+ * returns -1 immediately, without waiting. */
 int
 process_wait (tid_t child_tid) 
 {
