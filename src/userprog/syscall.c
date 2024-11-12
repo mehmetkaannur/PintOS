@@ -17,8 +17,6 @@
 
 #define CONSOLE_BUFFER_SIZE 100
 #define INVALID_FD -1
-#define STDIN 0
-#define STDOUT 1
 
 /* Functions to handle syscalls. */
 static void sys_halt (void *argv[] UNUSED);
@@ -124,7 +122,7 @@ validate_user_buffer (const void *buffer, unsigned size)
 }
 
 /* Add a file descriptor and file pointer to the hash table. */
-void 
+static void 
 fd_file_map_insert (int fd, struct file *file) 
 {
   struct fd_file *f = malloc (sizeof(struct fd_file));
@@ -138,7 +136,7 @@ fd_file_map_insert (int fd, struct file *file)
 }
 
 /* Remove a file descriptor and file pointer from the hash table. */
-void 
+static void 
 fd_file_map_remove (int fd) 
 {
   struct fd_file f;
@@ -279,6 +277,7 @@ sys_create (void *argv[])
       return false;
     }
   
+  /* Create file in file system. */
   lock_acquire (&filesys_lock);
   bool success = filesys_create (file, initial_size);
   lock_release (&filesys_lock);
@@ -292,12 +291,14 @@ sys_remove (void *argv[])
 {
   const char *file = (const char *) argv[0];
 
+  /* Check if file name is valid. */
   validate_user_pointer (file);
 
-  bool success = false;
+  /* Remove file from file system. */
   lock_acquire (&filesys_lock);
-  success = filesys_remove (file);
+  bool success = filesys_remove (file);
   lock_release (&filesys_lock);
+
   return success;
 }
 
@@ -307,24 +308,22 @@ sys_open (void *argv[])
 {
   const char *file = (const char *) argv[0];
 
+  /* Check if file name is valid. */
   validate_user_pointer (file);
 
+  /* Open file in file system. */
   lock_acquire (&filesys_lock);
   struct file *f = filesys_open (file);
   lock_release (&filesys_lock);
+
+  /* Check if file could not be opened. */
   if (f == NULL) 
     {
-      return INVALID_FD; // File could not be opened
+      return INVALID_FD;
     }
 
-  /* Allocate a new file descriptor */
+  /* Add file to file descriptor map. */
   int fd = allocate_fd ();
-  if (fd == -1) 
-    {
-      file_close (f);
-      return INVALID_FD; // No available file descriptors
-    }
-
   fd_file_map_insert (fd, f);
 
   return fd;
@@ -357,7 +356,7 @@ sys_read (void *argv[])
   unsigned size = (unsigned) argv[2];
 
   validate_user_buffer (buffer, size);
-  if (fd == STDIN) 
+  if (fd == STDIN_FILENO) 
     {
       /* Read from STDIN. */
       unsigned i;
@@ -366,7 +365,7 @@ sys_read (void *argv[])
       }
       return size;
     }
-  else if (fd == STDOUT)
+  else if (fd == STDOUT_FILENO)
     {
       return -1;
     }
@@ -395,7 +394,7 @@ sys_write (void *argv[])
   unsigned size = (unsigned) argv[2];
   
   validate_user_buffer (buffer, size);
-  if (fd == STDOUT)
+  if (fd == STDOUT_FILENO)
     {
       /* Write to console, CONSOLE_BUFFER_SIZE chars at a time. */
       unsigned i;
@@ -407,7 +406,7 @@ sys_write (void *argv[])
 
       return size;
     }
-  else if (fd <= STDIN) 
+  else if (fd <= STDIN_FILENO) 
     {
       return 0; // should we return -1 or 0?
     }
@@ -432,7 +431,7 @@ sys_seek (void *argv[])
   int fd = (int) argv[0];
   unsigned position = (unsigned) argv[1];
 
-  if (fd == STDIN || fd == STDOUT) 
+  if (fd == STDIN_FILENO || fd == STDOUT_FILENO) 
     {
       return;
     }
@@ -459,7 +458,7 @@ sys_tell (void *argv[])
 {
   int fd = (int) argv[0];
 
-  if (fd == STDIN || fd == STDOUT) 
+  if (fd == STDIN_FILENO || fd == STDOUT_FILENO) 
     {
       return -1;
     }
@@ -488,7 +487,7 @@ sys_close (void *argv[])
 {
   int fd = (int) argv[0];
   /* STDIN (0) and STDOUT (1) cannot be closed */
-  if (fd <= STDOUT)
+  if (fd <= STDOUT_FILENO)
     {
       return;
     }
