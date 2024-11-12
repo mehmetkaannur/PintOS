@@ -94,16 +94,6 @@ validate_user_pointer (const void *uaddr)
     }
 }
 
-static void
-check_filename (const char *filename)
-{
-  if (filename == NULL)
-    {
-      thread_exit ();
-    }
-  validate_user_pointer ((const uint32_t *) filename);
-}
-
 static int
 allocate_fd (void)
 {
@@ -274,15 +264,18 @@ sys_create (void *argv[])
 {
   const char *file = (const char *) argv[0];
   unsigned initial_size = (unsigned) argv[1];
-  check_filename (file);
-  bool success = false;
+  
+  /* Check if file name is valid. */
+  validate_user_pointer (file);
   if (strlen (file) > READDIR_MAX_LEN)
     {
       return false;
     }
+  
   lock_acquire (&filesys_lock);
-  success = filesys_create (file, initial_size);
+  bool success = filesys_create (file, initial_size);
   lock_release (&filesys_lock);
+  
   return success;
 }
 
@@ -290,7 +283,9 @@ static bool
 sys_remove (void *argv[])
 {
   const char *file = (const char *) argv[0];
-  check_filename (file);
+
+  validate_user_pointer (file);
+
   bool success = false;
   lock_acquire (&filesys_lock);
   success = filesys_remove (file);
@@ -302,7 +297,8 @@ static int
 sys_open (void *argv[])
 {
   const char *file = (const char *) argv[0];
-  check_filename (file);
+
+  validate_user_pointer (file);
 
   lock_acquire (&filesys_lock);
   struct file *f = filesys_open (file);
