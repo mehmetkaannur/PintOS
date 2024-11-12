@@ -501,6 +501,7 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  intr_set_level (old_level);
 
   /* Initialise child_info struct. */
   struct child_info *child_info = malloc (sizeof (struct child_info));
@@ -519,14 +520,12 @@ thread_create (const char *name, int priority,
   child_info->status = -1;
   child_info->parent_exists = true;
   child_info->child_exists = true;
+  
   t->child_info = child_info;
 
   /* Insert child_info struct into children_map of parent. */
   hash_insert (&thread_current ()->children_map, &child_info->elem);
   
-  /* IS THIS NECESSARY? COULD PARENT PROCESS BE KILLED BEFORE INSERTION
-     AND THEN CHILD_INFO NEVER FREED? */
-  intr_set_level (old_level);
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -619,6 +618,9 @@ thread_exit (void)
 #endif
 
   struct thread *cur = thread_current ();
+
+  /* Indicate to parent that child has exited. */
+  sema_up (&cur->child_info->exit_sema);
   
   bool should_free = false;
 
@@ -626,7 +628,6 @@ thread_exit (void)
   /* Inform parent thread that this process has exited. */
   if (cur->child_info->parent_exists)
     {
-      sema_up (&cur->child_info->exit_sema);
       cur->child_info->child_exists = false;
     }
   /* If both parent and child have died, should free child_info struct. */
