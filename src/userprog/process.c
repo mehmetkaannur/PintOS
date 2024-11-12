@@ -30,10 +30,11 @@ static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void setup_stack_args (int argc, char *argv[], void **esp);
 
+/* Argument passing information for start_process. */
 struct process_args
   {
-    char **argv;
-    int argc;
+    char **argv;              /* Array of arguments. */
+    int argc;                 /* Number of arguments. */
   };
 
 /* Starts a new thread running a user program loaded from
@@ -95,7 +96,7 @@ process_execute (const char *command)
   stack_size += argc * (int) sizeof (char *);
 
   /* Check if size of arguments in command too large or too many arguments. */
-  if (stack_size >= PGSIZE || arg)
+  if (stack_size > PGSIZE || arg)
     {
       free (argv);
       palloc_free_page (cmd_copy);
