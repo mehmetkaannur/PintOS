@@ -29,6 +29,10 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void setup_stack_args (int argc, char *argv[], void **esp);
+static void child_info_destroy (struct hash_elem *e, void *aux UNUSED);
+static unsigned fd_hash (const struct hash_elem *e, void *aux UNUSED);
+static bool fd_less (const struct hash_elem *a, const struct hash_elem *b,
+                     void *aux UNUSED);
 
 /* Argument passing information for start_process. */
 struct process_args
@@ -36,6 +40,61 @@ struct process_args
     char **argv;              /* Array of arguments. */
     int argc;                 /* Number of arguments. */
   };
+
+/* Destroys child_info struct. */
+static void
+child_info_destroy (struct hash_elem *e, void *aux UNUSED)
+{
+  struct child_info *i = hash_entry (e, struct child_info, elem);
+  
+  bool should_free = false;
+  lock_acquire (&i->exists_lock);
+  /* If child does not exist, since parent is dying, free child_info. */
+  if (i->child_exists)
+    {
+      i->parent_exists = false;
+    }
+  else
+    {
+      should_free = true;
+    }
+  lock_release (&i->exists_lock);
+
+  /* We do not have to worry about the child thread accessing child_info
+     struct after free because it is necessarily dead (or won't access the
+     child_info struct again at least). */ 
+  if (should_free)
+    {
+      free (i);
+    }
+}
+
+/* Hash function for file descriptor. */
+static unsigned 
+fd_hash (const struct hash_elem *e, void *aux UNUSED) 
+{
+  const struct fd_file *f = hash_entry (e, struct fd_file, hash_elem);
+  return hash_int (f->fd);
+}
+
+/* Comparison function for file descriptor. */
+static bool 
+fd_less (const struct hash_elem *a, const struct hash_elem *b,
+         void *aux UNUSED) 
+{
+  const struct fd_file *fa = hash_entry (a, struct fd_file, hash_elem);
+  const struct fd_file *fb = hash_entry (b, struct fd_file, hash_elem);
+  return fa->fd < fb->fd;
+}
+
+/* Destroys fd_file struct. */
+void
+fd_file_destroy (struct hash_elem *e, void *aux UNUSED)
+{
+  struct fd_file *i = hash_entry (e, struct fd_file, hash_elem);
+  file_close (i->file);
+  free (i);
+}
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -194,6 +253,7 @@ static void
 start_process (void *args_)
 {
   struct process_args *args = (struct process_args *) args_;
+  struct thread *cur = thread_current ();
   struct intr_frame if_;
   bool success;
 
@@ -207,7 +267,7 @@ start_process (void *args_)
   /* If load failed, quit. */
   if (!success) 
     {
-      sema_up (&thread_current()->child_info->load_sema);
+      sema_up (&cur->child_info->load_sema);
       palloc_free_page (args->argv[0]);
       free (args->argv);
       free (args);
@@ -215,8 +275,8 @@ start_process (void *args_)
     }
 
   /* Indicate to parent that load was successful. */
-  thread_current ()->child_info->load_success = true;
-  sema_up (&thread_current ()->child_info->load_sema);
+  cur->child_info->load_success = true;
+  sema_up (&cur->child_info->load_sema);
 
   /* Setup stack with arguments. */
   setup_stack_args (args->argc, args->argv, &if_.esp);
@@ -224,6 +284,15 @@ start_process (void *args_)
   palloc_free_page (args->argv[0]);
   free (args->argv);
   free (args);
+
+  /* Initialise fd_file_map. */
+  bool fd_file_map_success = hash_init (&cur->fd_file_map, fd_hash, 
+                                        fd_less, NULL);
+  if (!fd_file_map_success)
+    {
+      thread_exit ();
+    }
+  cur->next_fd = 2;
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -277,6 +346,42 @@ process_exit (void)
 
   /* Print termination message. */
   printf ("%s: exit(%d)\n", cur->name, cur->child_info->status);
+
+  /* Indicate to parent that child has exited. */
+  sema_up (&cur->child_info->exit_sema);
+  
+  bool should_free = false;
+
+  lock_acquire (&cur->child_info->exists_lock);  
+  /* Inform parent thread that this process has exited. */
+  if (cur->child_info->parent_exists)
+    {
+      cur->child_info->child_exists = false;
+    }
+  /* If both parent and child have died, should free child_info struct. */
+  else
+    {
+      should_free = true;
+    }
+  lock_release (&cur->child_info->exists_lock);
+
+  /* We do not have to worry about the parent thread accessing child_info
+     struct after free because it is necessarily dead (or won't access the
+     child_info struct again at least). */ 
+  if (should_free)
+    {
+      free (cur->child_info);
+    }
+
+  /* Destroy this thread's children_map and all child_info structs related
+     to children of this thread. */
+  hash_destroy (&cur->children_map, child_info_destroy);
+
+  /* Destroy this thread's fd_file_map and all fd_file structs related
+     to the open files of this thread. */
+  lock_acquire (&filesys_lock);
+  hash_destroy (&cur->fd_file_map, fd_file_destroy);
+  lock_release (&filesys_lock);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
