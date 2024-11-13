@@ -286,9 +286,7 @@ thread_start (void)
 #ifdef USERPROG
   struct thread *t = thread_current ();
   
-  /* We assume that this function is only called once ever 
-     and that is by the main thread after malloc has been initialised.
-     Since the main thread is not created using thread_create,
+  /* Since the main thread is not created using thread_create,
      we need to initialise its children map and do so here. */
   bool children_map_success = hash_init (&t->children_map,
                                          hash_child_info,
@@ -301,14 +299,6 @@ thread_start (void)
       PANIC ("Failed to initialise children_map for main thread.");
     }
 
-  bool fd_file_map_success = hash_init (&t->fd_file_map, fd_hash,
-                                        fd_less, NULL);
-  
-  if (!fd_file_map_success)
-    {
-      PANIC ("Failed to initialise fd_file_map for main thread.");
-    }
-  t->next_fd = 2;
 #endif
 
   /* Create the idle thread. */
