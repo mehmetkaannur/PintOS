@@ -126,14 +126,14 @@ get_file_from_fd (int fd)
   f.fd = fd;
   struct hash_elem *e = hash_find (&thread_current ()->fd_file_map,
                                    &f.hash_elem);
+
   /* Check if file exists in hashmap. */
   if (e == NULL) 
     {
       return NULL;
     }
-  struct fd_file *fd_file_entry = hash_entry (e, struct fd_file, hash_elem);
-  // TODO: do we need to check if fd_file_entry is NULL?
-  return fd_file_entry->file;
+
+  return hash_entry (e, struct fd_file, hash_elem)->file;
 }
 
 void
@@ -322,7 +322,7 @@ sys_filesize (void *argv[])
     }
 
   int size = file_length (file);
-  
+
   lock_release (&filesys_lock);
   
   return size;
@@ -337,18 +337,15 @@ sys_read (void *argv[])
   unsigned size = (unsigned) argv[2];
 
   validate_user_buffer (buffer, size);
+  
   if (fd == STDIN_FILENO) 
     {
       /* Read from STDIN. */
       unsigned i;
       for (i = 0; i < size; i++) {
-        ((char *)buffer)[i] = input_getc ();
+        ((char *) buffer)[i] = input_getc ();
       }
       return size;
-    }
-  else if (fd == STDOUT_FILENO)
-    {
-      return -1;
     }
 
   lock_acquire (&filesys_lock);
@@ -387,10 +384,6 @@ sys_write (void *argv[])
 
       return size;
     }
-  else if (fd <= STDIN_FILENO) 
-    {
-      return 0; // should we return -1 or 0?
-    }
 
   lock_acquire (&filesys_lock);
   struct file *file = get_file_from_fd (fd);
@@ -411,11 +404,6 @@ sys_seek (void *argv[])
 {
   int fd = (int) argv[0];
   unsigned position = (unsigned) argv[1];
-
-  if (fd == STDIN_FILENO || fd == STDOUT_FILENO) 
-    {
-      return;
-    }
 
   lock_acquire (&filesys_lock);
 
@@ -438,11 +426,6 @@ static unsigned
 sys_tell (void *argv[])
 {
   int fd = (int) argv[0];
-
-  if (fd == STDIN_FILENO || fd == STDOUT_FILENO) 
-    {
-      return -1;
-    }
 
   lock_acquire (&filesys_lock);
 
