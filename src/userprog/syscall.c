@@ -197,6 +197,8 @@ static pid_t
 sys_exec (void *argv[])
 {
   const char *cmd_line = (const char *) argv[0];
+  validate_user_pointer (cmd_line);
+  
   tid_t tid = process_execute (cmd_line);
 
   /* Wait for child process to finish load attempt. */
