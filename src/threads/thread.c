@@ -650,7 +650,9 @@ thread_exit (void)
 
   /* Destroy this thread's fd_file_map and all fd_file structs related
      to the open files of this thread. */
+  lock_acquire (&filesys_lock);
   hash_destroy (&cur->fd_file_map, fd_file_destroy);
+  lock_release (&filesys_lock);
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
