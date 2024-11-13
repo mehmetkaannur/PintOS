@@ -44,9 +44,6 @@ static void syscall_handler (struct intr_frame *);
 
 typedef void *(*syscall_func_t) (void *argv[]);
 
-static void fd_file_map_insert (int fd, struct file *file);
-static void fd_file_map_remove (int fd);
-
 /* Entry with information on how to handle syscall. */
 struct syscall_info
   {
@@ -118,37 +115,6 @@ validate_user_buffer (const void *buffer, unsigned size)
         {
           ptr = end;
         }
-    }
-}
-
-/* Add a file descriptor and file pointer to the hash table. */
-static void 
-fd_file_map_insert (int fd, struct file *file) 
-{
-  struct fd_file *f = malloc (sizeof(struct fd_file));
-  if (f == NULL) 
-    {
-      return;
-    }
-  f->fd = fd;
-  f->file = file;
-  hash_insert (&thread_current ()->fd_file_map, &f->hash_elem);
-}
-
-/* Remove a file descriptor and file pointer from the hash table. */
-static void 
-fd_file_map_remove (int fd) 
-{
-  struct fd_file f;
-  f.fd = fd;
-  struct hash_elem *e = hash_delete (&thread_current ()->fd_file_map,
-                                     &f.hash_elem);
-  if (e != NULL)
-    {
-      struct fd_file *fd_file_entry = hash_entry (e, struct fd_file,
-                                                  hash_elem);
-      file_close (fd_file_entry->file);
-      free (fd_file_entry);
     }
 }
 
@@ -306,25 +272,35 @@ sys_remove (void *argv[])
 static int
 sys_open (void *argv[])
 {
-  const char *file = (const char *) argv[0];
+  const char *file_name = (const char *) argv[0];
 
   /* Check if file name is valid. */
-  validate_user_pointer (file);
+  validate_user_pointer (file_name);
 
   /* Open file in file system. */
   lock_acquire (&filesys_lock);
-  struct file *f = filesys_open (file);
+  struct file *file = filesys_open (file_name);
   lock_release (&filesys_lock);
 
   /* Check if file could not be opened. */
-  if (f == NULL) 
+  if (file == NULL) 
     {
       return INVALID_FD;
     }
 
+  struct fd_file *fd_file = malloc (sizeof (struct fd_file));
+  
+  /* Check if malloc was successful. */
+  if (fd_file == NULL) 
+    {
+      return -1;
+    }
+
   /* Add file to file descriptor map. */
   int fd = allocate_fd ();
-  fd_file_map_insert (fd, f);
+  fd_file->fd = fd;
+  fd_file->file = file;
+  hash_insert (&thread_current ()->fd_file_map, &fd_file->hash_elem);
 
   return fd;
 }
@@ -334,7 +310,10 @@ static int
 sys_filesize (void *argv[])
 {
   int fd = (int) argv[0];
+  
   lock_acquire (&filesys_lock);
+  
+  /* Attempt to find file with fd. */
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
@@ -343,7 +322,9 @@ sys_filesize (void *argv[])
     }
 
   int size = file_length (file);
+  
   lock_release (&filesys_lock);
+  
   return size;
 }
 
@@ -486,15 +467,19 @@ static void
 sys_close (void *argv[])
 {
   int fd = (int) argv[0];
-  /* STDIN (0) and STDOUT (1) cannot be closed */
-  if (fd <= STDOUT_FILENO)
-    {
-      return;
-    }
-  
-  /* Remove the file descriptor from the hash table */
+
   lock_acquire (&filesys_lock);
-  fd_file_map_remove (fd);
+
+  /* Remove the file descriptor from the hash table */
+  struct fd_file f;
+  f.fd = fd;
+  struct hash_elem *e = hash_delete (&thread_current ()->fd_file_map,
+                                     &f.hash_elem);
+  if (e != NULL)
+    {
+      fd_file_destroy (e, NULL);
+    }
+
   lock_release (&filesys_lock);
 }
 

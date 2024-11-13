@@ -96,7 +96,6 @@ static hash_action_func child_info_destroy;
 static unsigned fd_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool fd_less (const struct hash_elem *a, const struct hash_elem *b,
                      void *aux UNUSED);
-static hash_action_func fd_file_destroy;
 
 /* Hash function for file descriptor. */
 static unsigned 
@@ -163,7 +162,7 @@ child_info_destroy (struct hash_elem *e, void *aux UNUSED)
 }
 
 /* Destroys fd_file struct. */
-static void
+void
 fd_file_destroy (struct hash_elem *e, void *aux UNUSED)
 {
   struct fd_file *i = hash_entry (e, struct fd_file, hash_elem);
