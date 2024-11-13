@@ -91,7 +91,6 @@ static int bound_nice (int nice);
 
 static hash_hash_func hash_child_info;
 static hash_less_func less_child_info;
-static hash_action_func child_info_destroy;
 
 static unsigned fd_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool fd_less (const struct hash_elem *a, const struct hash_elem *b,
@@ -131,34 +130,6 @@ less_child_info (const struct hash_elem *a, const struct hash_elem *b,
   const struct child_info *ia = hash_entry (a, struct child_info, elem);
   const struct child_info *ib = hash_entry (b, struct child_info, elem);
   return ia->child_pid < ib->child_pid;
-}
-
-/* Destroys child_info struct. */
-static void
-child_info_destroy (struct hash_elem *e, void *aux UNUSED)
-{
-  struct child_info *i = hash_entry (e, struct child_info, elem);
-  
-  bool should_free = false;
-  lock_acquire (&i->exists_lock);
-  /* If child does not exist, since parent is dying, free child_info. */
-  if (i->child_exists)
-    {
-      i->parent_exists = false;
-    }
-  else
-    {
-      should_free = true;
-    }
-  lock_release (&i->exists_lock);
-
-  /* We do not have to worry about the child thread accessing child_info
-     struct after free because it is necessarily dead (or won't access the
-     child_info struct again at least). */ 
-  if (should_free)
-    {
-      free (i);
-    }
 }
 
 /* Destroys fd_file struct. */
@@ -312,6 +283,7 @@ thread_init (void)
 void
 thread_start (void) 
 {
+#ifdef USERPROG
   struct thread *t = thread_current ();
   
   /* We assume that this function is only called once ever 
@@ -323,11 +295,6 @@ thread_start (void)
                                          less_child_info,
                                          NULL);
   
-  /* Create the idle thread. */
-  struct semaphore idle_started;
-  sema_init (&idle_started, 0);
-  thread_create ("idle", PRI_MIN, idle, &idle_started);
-
   /* Check if hash_init was successful. */
   if (!children_map_success)
     {
@@ -342,6 +309,12 @@ thread_start (void)
       PANIC ("Failed to initialise fd_file_map for main thread.");
     }
   t->next_fd = 2;
+#endif
+
+  /* Create the idle thread. */
+  struct semaphore idle_started;
+  sema_init (&idle_started, 0);
+  thread_create ("idle", PRI_MIN, idle, &idle_started);
 
   /* Start preemptive thread scheduling. */
   intr_enable ();
@@ -457,28 +430,52 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
+  
+  tid = t->tid = allocate_tid ();
+
+#ifdef USERPROG
+  /* Initialise children map. */
   bool children_map_success = hash_init (&t->children_map, hash_child_info,
                                          less_child_info, NULL);
-
-  /* Check if hash_init was successful. */
   if (!children_map_success)
     {
       free (t);
       return TID_ERROR;
     }
 
+  struct child_info *child_info = malloc (sizeof (struct child_info));
+  if (child_info == NULL)
+    {
+      free (t);
+      return TID_ERROR;
+    }
+
+  /* Initialise child_info struct. */
+  child_info->child_pid = tid;
+  child_info->load_success = false;
+  sema_init (&child_info->load_sema, 0);
+  sema_init (&child_info->exit_sema, 0);
+  lock_init (&child_info->exists_lock);
+  child_info->status = -1;
+  child_info->parent_exists = true;
+  child_info->child_exists = true;
+  
+  t->child_info = child_info;
+
+  /* Insert child_info struct into children_map of parent. */
+  hash_insert (&thread_current ()->children_map, &child_info->elem);
+
+  /* Initialise fd_file_map. */
   bool fd_file_map_success = hash_init (&t->fd_file_map, fd_hash, 
                                         fd_less, NULL);
-
-  /* Check if hash_init was successful. */
   if (!fd_file_map_success)
     {
       free (t);
       return TID_ERROR;
     }
-  t->next_fd = 2;
 
-  tid = t->tid = allocate_tid ();
+  t->next_fd = 2;
+#endif
 
   /* Prepare thread for first run by initializing its stack.
      Do this atomically so intermediate values for the 'stack' 
@@ -501,30 +498,6 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   intr_set_level (old_level);
-
-  /* Initialise child_info struct. */
-  struct child_info *child_info = malloc (sizeof (struct child_info));
-
-  if (child_info == NULL)
-    {
-      free (t);
-      return TID_ERROR;
-    }
-
-  child_info->child_pid = tid;
-  child_info->load_success = false;
-  sema_init (&child_info->load_sema, 0);
-  sema_init (&child_info->exit_sema, 0);
-  lock_init (&child_info->exists_lock);
-  child_info->status = -1;
-  child_info->parent_exists = true;
-  child_info->child_exists = true;
-  
-  t->child_info = child_info;
-
-  /* Insert child_info struct into children_map of parent. */
-  hash_insert (&thread_current ()->children_map, &child_info->elem);
-  
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -615,51 +588,13 @@ thread_exit (void)
 #ifdef USERPROG
   process_exit ();
 #endif
-
-  struct thread *cur = thread_current ();
-
-  /* Indicate to parent that child has exited. */
-  sema_up (&cur->child_info->exit_sema);
   
-  bool should_free = false;
-
-  lock_acquire (&cur->child_info->exists_lock);  
-  /* Inform parent thread that this process has exited. */
-  if (cur->child_info->parent_exists)
-    {
-      cur->child_info->child_exists = false;
-    }
-  /* If both parent and child have died, should free child_info struct. */
-  else
-    {
-      should_free = true;
-    }
-  lock_release (&cur->child_info->exists_lock);
-
-  /* We do not have to worry about the parent thread accessing child_info
-     struct after free because it is necessarily dead (or won't access the
-     child_info struct again at least). */ 
-  if (should_free)
-    {
-      free (cur->child_info);
-    }
-
-  /* Destroy this thread's children_map and all child_info structs related
-     to children of this thread. */
-  hash_destroy (&cur->children_map, child_info_destroy);
-
-  /* Destroy this thread's fd_file_map and all fd_file structs related
-     to the open files of this thread. */
-  lock_acquire (&filesys_lock);
-  hash_destroy (&cur->fd_file_map, fd_file_destroy);
-  lock_release (&filesys_lock);
-
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  list_remove (&cur->allelem);
-  cur->status = THREAD_DYING;
+  list_remove (&thread_current ()->allelem);
+  thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
 }
