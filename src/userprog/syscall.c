@@ -82,8 +82,8 @@ static void
 validate_user_pointer (const void *uaddr)
 {
   struct thread *t = thread_current ();
-  if (!(is_user_vaddr (uaddr) && 
-        pagedir_get_page (t->pagedir, uaddr) != NULL))
+  if (!is_user_vaddr (uaddr) || 
+      pagedir_get_page (t->pagedir, uaddr) == NULL)
     {
       thread_exit ();
     }
@@ -97,24 +97,19 @@ allocate_fd (void)
   return t->next_fd++;
 }
 
+/* Validates user buffer with given size. */
 static void
 validate_user_buffer (const void *buffer, unsigned size)
 {
-  const uint8_t *ptr = (const uint8_t *) buffer;
-  const uint8_t *end = ptr + size;
+  uintptr_t ptr = (uintptr_t) buffer;
+  const uintptr_t end = ptr + size;
+  uintptr_t page_boundary = (uintptr_t) pg_round_down (buffer);
   while (ptr < end)
     {
-      validate_user_pointer (ptr);
-      /* Advance to next page boundary or end */
-      uintptr_t page_boundary = ((uintptr_t) ptr & ~PGMASK) + PGSIZE;
-      if (page_boundary < (uintptr_t) end)
-        {
-          ptr = (const uint8_t *) page_boundary;
-        }
-      else
-        {
-          ptr = end;
-        }
+      validate_user_pointer ((void *) ptr);
+      /* Advance to next page boundary or end. */
+      page_boundary += PGSIZE;
+      ptr = page_boundary < end ? page_boundary : end;
     }
 }
 
