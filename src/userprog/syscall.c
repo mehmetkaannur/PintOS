@@ -311,18 +311,15 @@ sys_filesize (void *argv[])
 {
   int fd = (int) argv[0];
   
-  lock_acquire (&filesys_lock);
-  
   /* Attempt to find file with fd. */
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      lock_release (&filesys_lock);
       return INVALID_FD;
     }
 
+  lock_acquire (&filesys_lock);
   int size = file_length (file);
-
   lock_release (&filesys_lock);
   
   return size;
@@ -337,7 +334,7 @@ sys_read (void *argv[])
   unsigned size = (unsigned) argv[2];
 
   validate_user_buffer (buffer, size);
-  
+
   if (fd == STDIN_FILENO) 
     {
       /* Read from STDIN. */
@@ -348,13 +345,14 @@ sys_read (void *argv[])
       return size;
     }
 
-  lock_acquire (&filesys_lock);
+  /* Get file from file descriptor. */
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      lock_release (&filesys_lock);
       return INVALID_FD;
     }
+  
+  lock_acquire (&filesys_lock);
   int bytes_read = file_read (file, buffer, size);
   lock_release (&filesys_lock);
 
@@ -365,8 +363,6 @@ sys_read (void *argv[])
 static int
 sys_write (void *argv[])
 {
-  // file_deny_write is called in load() in process.c
-  // TODO: file_allow_write() need to be called properly
   int fd = (int) argv[0];
   const void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
@@ -385,13 +381,15 @@ sys_write (void *argv[])
       return size;
     }
 
-  lock_acquire (&filesys_lock);
+  /* Get file from file descriptor. */
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      lock_release (&filesys_lock);
       return INVALID_FD;
     }
+
+  /* Write to file. */
+  lock_acquire (&filesys_lock);
   int bytes_write = file_write (file, buffer, size);
   lock_release (&filesys_lock);
 
@@ -405,19 +403,16 @@ sys_seek (void *argv[])
   int fd = (int) argv[0];
   unsigned position = (unsigned) argv[1];
 
-  lock_acquire (&filesys_lock);
-
   /* Get the file from the file descriptor */
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      lock_release (&filesys_lock);
       return;
     }
 
   /* Change the file position. */
+  lock_acquire (&filesys_lock);
   file_seek (file, position);
-
   lock_release (&filesys_lock);
 }
 
@@ -427,19 +422,16 @@ sys_tell (void *argv[])
 {
   int fd = (int) argv[0];
 
-  lock_acquire (&filesys_lock);
-
   /* Get the file from the file descriptor */
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      lock_release (&filesys_lock);
       return INVALID_FD;
     }
   
   /* Return the position of the next byte to be read or written */
+  lock_acquire (&filesys_lock);
   unsigned pos = file_tell (file);
-  
   lock_release (&filesys_lock);
 
   return pos;
