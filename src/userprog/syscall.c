@@ -277,7 +277,21 @@ sys_open (void *argv[])
   const char *file_name = (const char *) argv[0];
 
   /* Check if file name is valid. */
-  validate_user_pointer (file_name);
+  bool terminated = false;
+  for (int i = 0; i < READDIR_MAX_LEN; i++)
+    {
+      validate_user_pointer (file_name + i);
+      if (file_name[i] == '\0')
+        {
+          terminated = true;
+          break;
+        }
+    }
+
+  if (!terminated)
+    {
+      thread_exit ();
+    }
 
   /* Open file in file system. */
   lock_acquire (&filesys_lock);
@@ -335,6 +349,7 @@ sys_read (void *argv[])
   void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
 
+  /* Check if buffer is valid. */
   validate_user_buffer (buffer, size);
 
   if (fd == STDIN_FILENO) 
@@ -354,6 +369,7 @@ sys_read (void *argv[])
       return INVALID_FD;
     }
   
+  /* Read from file. */
   lock_acquire (&filesys_lock);
   int bytes_read = file_read (file, buffer, size);
   lock_release (&filesys_lock);
@@ -369,7 +385,9 @@ sys_write (void *argv[])
   const void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
   
+  /* Check if buffer is valid. */
   validate_user_buffer (buffer, size);
+
   if (fd == STDOUT_FILENO)
     {
       /* Write to console, CONSOLE_BUFFER_SIZE chars at a time. */
