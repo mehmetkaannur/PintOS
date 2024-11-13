@@ -30,6 +30,9 @@ static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void setup_stack_args (int argc, char *argv[], void **esp);
 static void child_info_destroy (struct hash_elem *e, void *aux UNUSED);
+static unsigned fd_hash (const struct hash_elem *e, void *aux UNUSED);
+static bool fd_less (const struct hash_elem *a, const struct hash_elem *b,
+                     void *aux UNUSED);
 
 /* Argument passing information for start_process. */
 struct process_args
@@ -64,6 +67,33 @@ child_info_destroy (struct hash_elem *e, void *aux UNUSED)
     {
       free (i);
     }
+}
+
+/* Hash function for file descriptor. */
+static unsigned 
+fd_hash (const struct hash_elem *e, void *aux UNUSED) 
+{
+  const struct fd_file *f = hash_entry (e, struct fd_file, hash_elem);
+  return hash_int (f->fd);
+}
+
+/* Comparison function for file descriptor. */
+static bool 
+fd_less (const struct hash_elem *a, const struct hash_elem *b,
+         void *aux UNUSED) 
+{
+  const struct fd_file *fa = hash_entry (a, struct fd_file, hash_elem);
+  const struct fd_file *fb = hash_entry (b, struct fd_file, hash_elem);
+  return fa->fd < fb->fd;
+}
+
+/* Destroys fd_file struct. */
+void
+fd_file_destroy (struct hash_elem *e, void *aux UNUSED)
+{
+  struct fd_file *i = hash_entry (e, struct fd_file, hash_elem);
+  file_close (i->file);
+  free (i);
 }
 
 /* Starts a new thread running a user program loaded from
@@ -223,6 +253,7 @@ static void
 start_process (void *args_)
 {
   struct process_args *args = (struct process_args *) args_;
+  struct thread *cur = thread_current ();
   struct intr_frame if_;
   bool success;
 
@@ -236,7 +267,7 @@ start_process (void *args_)
   /* If load failed, quit. */
   if (!success) 
     {
-      sema_up (&thread_current()->child_info->load_sema);
+      sema_up (&cur->child_info->load_sema);
       palloc_free_page (args->argv[0]);
       free (args->argv);
       free (args);
@@ -244,8 +275,8 @@ start_process (void *args_)
     }
 
   /* Indicate to parent that load was successful. */
-  thread_current ()->child_info->load_success = true;
-  sema_up (&thread_current ()->child_info->load_sema);
+  cur->child_info->load_success = true;
+  sema_up (&cur->child_info->load_sema);
 
   /* Setup stack with arguments. */
   setup_stack_args (args->argc, args->argv, &if_.esp);
@@ -253,6 +284,15 @@ start_process (void *args_)
   palloc_free_page (args->argv[0]);
   free (args->argv);
   free (args);
+
+  /* Initialise fd_file_map. */
+  bool fd_file_map_success = hash_init (&cur->fd_file_map, fd_hash, 
+                                        fd_less, NULL);
+  if (!fd_file_map_success)
+    {
+      thread_exit ();
+    }
+  cur->next_fd = 2;
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
