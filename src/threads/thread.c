@@ -96,10 +96,9 @@ static hash_action_func child_info_destroy;
 static unsigned fd_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool fd_less (const struct hash_elem *a, const struct hash_elem *b,
                      void *aux UNUSED);
-static hash_action_func fd_file_destroy;
 
 /* Hash function for file descriptor. */
-unsigned 
+static unsigned 
 fd_hash (const struct hash_elem *e, void *aux UNUSED) 
 {
   const struct fd_file *f = hash_entry (e, struct fd_file, hash_elem);
@@ -107,7 +106,7 @@ fd_hash (const struct hash_elem *e, void *aux UNUSED)
 }
 
 /* Comparison function for file descriptor. */
-bool 
+static bool 
 fd_less (const struct hash_elem *a, const struct hash_elem *b,
          void *aux UNUSED) 
 {
@@ -163,7 +162,7 @@ child_info_destroy (struct hash_elem *e, void *aux UNUSED)
 }
 
 /* Destroys fd_file struct. */
-static void
+void
 fd_file_destroy (struct hash_elem *e, void *aux UNUSED)
 {
   struct fd_file *i = hash_entry (e, struct fd_file, hash_elem);
@@ -501,6 +500,7 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  intr_set_level (old_level);
 
   /* Initialise child_info struct. */
   struct child_info *child_info = malloc (sizeof (struct child_info));
@@ -519,14 +519,12 @@ thread_create (const char *name, int priority,
   child_info->status = -1;
   child_info->parent_exists = true;
   child_info->child_exists = true;
+  
   t->child_info = child_info;
 
   /* Insert child_info struct into children_map of parent. */
   hash_insert (&thread_current ()->children_map, &child_info->elem);
   
-  /* IS THIS NECESSARY? COULD PARENT PROCESS BE KILLED BEFORE INSERTION
-     AND THEN CHILD_INFO NEVER FREED? */
-  intr_set_level (old_level);
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -619,6 +617,9 @@ thread_exit (void)
 #endif
 
   struct thread *cur = thread_current ();
+
+  /* Indicate to parent that child has exited. */
+  sema_up (&cur->child_info->exit_sema);
   
   bool should_free = false;
 
@@ -626,7 +627,6 @@ thread_exit (void)
   /* Inform parent thread that this process has exited. */
   if (cur->child_info->parent_exists)
     {
-      sema_up (&cur->child_info->exit_sema);
       cur->child_info->child_exists = false;
     }
   /* If both parent and child have died, should free child_info struct. */
@@ -650,7 +650,9 @@ thread_exit (void)
 
   /* Destroy this thread's fd_file_map and all fd_file structs related
      to the open files of this thread. */
+  lock_acquire (&filesys_lock);
   hash_destroy (&cur->fd_file_map, fd_file_destroy);
+  lock_release (&filesys_lock);
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us

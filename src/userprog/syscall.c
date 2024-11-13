@@ -17,8 +17,6 @@
 
 #define CONSOLE_BUFFER_SIZE 100
 #define INVALID_FD -1
-#define STDIN 0
-#define STDOUT 1
 
 /* Functions to handle syscalls. */
 static void sys_halt (void *argv[] UNUSED);
@@ -91,16 +89,7 @@ validate_user_pointer (const void *uaddr)
     }
 }
 
-static void
-check_filename (const char *filename)
-{
-  if (filename == NULL)
-    {
-      thread_exit ();
-    }
-  validate_user_pointer ((const uint32_t *) filename);
-}
-
+/* Returns a new file descriptor for the current thread to use. */
 static int
 allocate_fd (void)
 {
@@ -129,37 +118,6 @@ validate_user_buffer (const void *buffer, unsigned size)
     }
 }
 
-/* Add a file descriptor and file pointer to the hash table. */
-void 
-fd_file_map_insert (int fd, struct file *file) 
-{
-  struct fd_file *f = malloc (sizeof(struct fd_file));
-  if (f == NULL) 
-    {
-      return;
-    }
-  f->fd = fd;
-  f->file = file;
-  hash_insert (&thread_current ()->fd_file_map, &f->hash_elem);
-}
-
-/* Remove a file descriptor and file pointer from the hash table. */
-void 
-fd_file_map_remove (int fd) 
-{
-  struct fd_file f;
-  f.fd = fd;
-  struct hash_elem *e = hash_delete (&thread_current ()->fd_file_map,
-                                     &f.hash_elem);
-  if (e != NULL)
-    {
-      struct fd_file *fd_file_entry = hash_entry (e, struct fd_file,
-                                                  hash_elem);
-      file_close (fd_file_entry->file);
-      free (fd_file_entry);
-    }
-}
-
 /* Helper function to get a file from the hash table of open files. */
 static struct file *
 get_file_from_fd (int fd)
@@ -168,14 +126,14 @@ get_file_from_fd (int fd)
   f.fd = fd;
   struct hash_elem *e = hash_find (&thread_current ()->fd_file_map,
                                    &f.hash_elem);
+
   /* Check if file exists in hashmap. */
   if (e == NULL) 
     {
       return NULL;
     }
-  struct fd_file *fd_file_entry = hash_entry (e, struct fd_file, hash_elem);
-  // TODO: do we need to check if fd_file_entry is NULL?
-  return fd_file_entry->file;
+
+  return hash_entry (e, struct fd_file, hash_elem)->file;
 }
 
 void
@@ -185,6 +143,7 @@ syscall_init (void)
   lock_init (&filesys_lock);
 }
 
+/* Handles system calls based on intr_frame f. */
 static void
 syscall_handler (struct intr_frame *f) 
 {
@@ -214,12 +173,14 @@ syscall_handler (struct intr_frame *f)
     }
 }
 
+/* Helper function for halt system call. */
 static void
 sys_halt (void *argv[] UNUSED)
 {
   shutdown_power_off ();
 }
 
+/* Helper function for exit system call. */
 static void
 sys_exit (void *argv[])
 {
@@ -231,6 +192,7 @@ sys_exit (void *argv[])
   thread_exit ();
 }
 
+/* Helper function for exec system call. */
 static pid_t
 sys_exec (void *argv[])
 {
@@ -259,6 +221,7 @@ sys_exec (void *argv[])
   return tid;
 }
 
+/* Helper function for wait system call. */
 static int
 sys_wait (void *argv[])
 {
@@ -266,79 +229,103 @@ sys_wait (void *argv[])
   return process_wait (pid);
 }
 
+/* Helper function for create system call. */
 static bool
 sys_create (void *argv[])
 {
   const char *file = (const char *) argv[0];
   unsigned initial_size = (unsigned) argv[1];
-  check_filename (file);
-  bool success = false;
+  
+  /* Check if file name is valid. */
+  validate_user_pointer (file);
   if (strlen (file) > READDIR_MAX_LEN)
     {
       return false;
     }
+  
+  /* Create file in file system. */
   lock_acquire (&filesys_lock);
-  success = filesys_create (file, initial_size);
+  bool success = filesys_create (file, initial_size);
   lock_release (&filesys_lock);
+
   return success;
 }
 
+/* Helper function for remove system call. */
 static bool
 sys_remove (void *argv[])
 {
   const char *file = (const char *) argv[0];
-  check_filename (file);
-  bool success = false;
+
+  /* Check if file name is valid. */
+  validate_user_pointer (file);
+
+  /* Remove file from file system. */
   lock_acquire (&filesys_lock);
-  success = filesys_remove (file);
+  bool success = filesys_remove (file);
   lock_release (&filesys_lock);
+
   return success;
 }
 
+/* Helper function for open system call. */
 static int
 sys_open (void *argv[])
 {
-  const char *file = (const char *) argv[0];
-  check_filename (file);
+  const char *file_name = (const char *) argv[0];
 
+  /* Check if file name is valid. */
+  validate_user_pointer (file_name);
+
+  /* Open file in file system. */
   lock_acquire (&filesys_lock);
-  struct file *f = filesys_open (file);
+  struct file *file = filesys_open (file_name);
   lock_release (&filesys_lock);
-  if (f == NULL) 
+
+  /* Check if file could not be opened. */
+  if (file == NULL) 
     {
-      return INVALID_FD; // File could not be opened
+      return INVALID_FD;
     }
 
-  /* Allocate a new file descriptor */
+  struct fd_file *fd_file = malloc (sizeof (struct fd_file));
+  
+  /* Check if malloc was successful. */
+  if (fd_file == NULL) 
+    {
+      return -1;
+    }
+
+  /* Add file to file descriptor map. */
   int fd = allocate_fd ();
-  if (fd == -1) 
-    {
-      file_close (f);
-      return INVALID_FD; // No available file descriptors
-    }
-
-  fd_file_map_insert (fd, f);
+  fd_file->fd = fd;
+  fd_file->file = file;
+  hash_insert (&thread_current ()->fd_file_map, &fd_file->hash_elem);
 
   return fd;
 }
 
+/* Helper function for filesize system call. */
 static int
 sys_filesize (void *argv[])
 {
   int fd = (int) argv[0];
-  lock_acquire (&filesys_lock);
+  
+  /* Attempt to find file with fd. */
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      lock_release (&filesys_lock);
       return INVALID_FD;
     }
 
+  lock_acquire (&filesys_lock);
   int size = file_length (file);
   lock_release (&filesys_lock);
+  
   return size;
 }
 
+/* Helper function for read system call. */
 static int
 sys_read (void *argv[])
 {
@@ -347,44 +334,41 @@ sys_read (void *argv[])
   unsigned size = (unsigned) argv[2];
 
   validate_user_buffer (buffer, size);
-  if (fd == STDIN) 
+
+  if (fd == STDIN_FILENO) 
     {
       /* Read from STDIN. */
       unsigned i;
       for (i = 0; i < size; i++) {
-        ((char *)buffer)[i] = input_getc ();
+        ((char *) buffer)[i] = input_getc ();
       }
       return size;
     }
-  else if (fd == STDOUT)
-    {
-      return -1;
-    }
 
-  lock_acquire (&filesys_lock);
+  /* Get file from file descriptor. */
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      lock_release (&filesys_lock);
       return INVALID_FD;
     }
+  
+  lock_acquire (&filesys_lock);
   int bytes_read = file_read (file, buffer, size);
   lock_release (&filesys_lock);
 
   return bytes_read;
 }
 
+/* Helper function for write system call. */
 static int
 sys_write (void *argv[])
 {
-  // file_deny_write is called in load() in process.c
-  // TODO: file_allow_write() need to be called properly
   int fd = (int) argv[0];
   const void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
   
   validate_user_buffer (buffer, size);
-  if (fd == STDOUT)
+  if (fd == STDOUT_FILENO)
     {
       /* Write to console, CONSOLE_BUFFER_SIZE chars at a time. */
       unsigned i;
@@ -396,92 +380,81 @@ sys_write (void *argv[])
 
       return size;
     }
-  else if (fd <= STDIN) 
-    {
-      return 0; // should we return -1 or 0?
-    }
 
-  lock_acquire (&filesys_lock);
+  /* Get file from file descriptor. */
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      lock_release (&filesys_lock);
       return INVALID_FD;
     }
+
+  /* Write to file. */
+  lock_acquire (&filesys_lock);
   int bytes_write = file_write (file, buffer, size);
   lock_release (&filesys_lock);
 
   return bytes_write;
 }
 
+/* Helper function for seek system call. */
 static void
 sys_seek (void *argv[])
 {
   int fd = (int) argv[0];
   unsigned position = (unsigned) argv[1];
 
-  if (fd == STDIN || fd == STDOUT) 
-    {
-      return;
-    }
-
-  lock_acquire (&filesys_lock);
-
   /* Get the file from the file descriptor */
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      lock_release (&filesys_lock);
       return;
     }
 
   /* Change the file position. */
+  lock_acquire (&filesys_lock);
   file_seek (file, position);
-
   lock_release (&filesys_lock);
 }
 
+/* Helper function for tell system call. */
 static unsigned
 sys_tell (void *argv[])
 {
   int fd = (int) argv[0];
 
-  if (fd == STDIN || fd == STDOUT) 
-    {
-      return -1;
-    }
-
-  lock_acquire (&filesys_lock);
-
   /* Get the file from the file descriptor */
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      lock_release (&filesys_lock);
       return INVALID_FD;
     }
   
   /* Return the position of the next byte to be read or written */
+  lock_acquire (&filesys_lock);
   unsigned pos = file_tell (file);
-  
   lock_release (&filesys_lock);
 
   return pos;
 }
 
+/* Helper function for close system call. */
 static void
 sys_close (void *argv[])
 {
   int fd = (int) argv[0];
-  /* STDIN (0) and STDOUT (1) cannot be closed */
-  if (fd <= STDOUT)
-    {
-      return;
-    }
-  
-  /* Remove the file descriptor from the hash table */
+
   lock_acquire (&filesys_lock);
-  fd_file_map_remove (fd);
+
+  /* Remove the file descriptor from the hash table */
+  struct fd_file f;
+  f.fd = fd;
+  struct hash_elem *e = hash_delete (&thread_current ()->fd_file_map,
+                                     &f.hash_elem);
+  if (e != NULL)
+    {
+      fd_file_destroy (e, NULL);
+    }
+
   lock_release (&filesys_lock);
 }
 
