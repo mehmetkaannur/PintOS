@@ -23,8 +23,8 @@
 #include "hash.h"
 #include "userprog/syscall.h"
 
+#define WORD_SIZE 4
 #define NUM_ADDITIONAL_STACK_ADDRS 4
-#define POINTERS_PER_ARG 2
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -116,15 +116,23 @@ process_execute (const char *command)
   char *sep = " ";
   char *arg, *last;
   int argc = 0;
-  /* Maximum possible arguments from command string occurs if every other
-    character in cmd_copy is an argument (e.g. "a b c d e" has 9 characters
-    and 5 args). */
+
+  /* Monitor projected stack_size to detect potential overflow. */  
   size_t stack_size = NUM_ADDITIONAL_STACK_ADDRS * sizeof (void *);
+  
+  /* Maximum possible arguments from command string occurs if every other
+    character is an argument (e.g. "a b c" has 5 characters and 3 args). */
   size_t max_cmd_args = (strlen (cmd_copy) + 1) / 2;
-  size_t max_possible_args = (PGSIZE - stack_size) 
-                           / (POINTERS_PER_ARG * sizeof (void *));
-  size_t argv_size = max_cmd_args > max_possible_args
-                   ? max_possible_args : max_cmd_args;
+
+  /* Maximum possible arguments on stack occurs when each tokenised arg
+     has 1 character and a null terminator (e.g. "a\0"). */
+  size_t max_allowed_args = (PGSIZE - stack_size) 
+                           / (sizeof (char) * 2 + sizeof (char *));
+
+  /* The number of arguments is limited by the maximum that will fit on the
+      stack and the maximum that can come from the command string. */ 
+  size_t argv_size = max_cmd_args > max_allowed_args
+                   ? max_allowed_args : max_cmd_args;
   char **argv = malloc (argv_size * sizeof (char *));
 
   /* Check if malloc was successful. */
@@ -134,7 +142,8 @@ process_execute (const char *command)
       return TID_ERROR;
     }
 
-  /* Tokenise command string into file name and arguments. */
+  /* Tokenise command string into file name and arguments, up to maximum
+     number of arguments possible. */
   for (arg = strtok_r (cmd_copy, sep, &last);
        arg && argc < (int) argv_size;
        arg = strtok_r (NULL, sep, &last))
@@ -143,6 +152,9 @@ process_execute (const char *command)
       argc++;
       stack_size += strlen (arg) + 1;
     }
+
+  /* Round up stack size to multiple of 4 (WORD_SIZE) bytes. */
+  stack_size = (stack_size + (WORD_SIZE - 1)) & ~(WORD_SIZE - 1);
   
   /* Calculate projected size of stack after setup with args. */
   stack_size += argc * (int) sizeof (char *);
@@ -177,13 +189,12 @@ process_execute (const char *command)
       free (args);
       free (argv);
       palloc_free_page (cmd_copy);
-      return TID_ERROR;
     }
   
   return tid;
 }
 
-/* Push argument arg to stack. */
+/* Push argument ARG of size SIZE to stack given by ESP. */
 static void
 push_to_stack (void *arg, char **esp, size_t size)
 {
@@ -200,7 +211,7 @@ setup_stack_args (int argc, char *argv[], void **sp_)
   /* Check if malloc was successful. */
   if (argvp == NULL)
     {
-      return;
+      thread_exit ();
     }
 
   char **sp = (char **) sp_;
@@ -217,7 +228,7 @@ setup_stack_args (int argc, char *argv[], void **sp_)
     }
   
   /* Round stack pointer to multiple of 4 for word alignment. */
-  *sp = (void *) ((uintptr_t)(*sp) & ~(uintptr_t) 3);
+  *sp = (void *) ((uintptr_t) (*sp) & ~(WORD_SIZE - 1));
 
   /* Add null pointer to stack. */
   push_to_stack (NULL, sp, sizeof (char *));
