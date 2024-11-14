@@ -411,7 +411,6 @@ thread_create (const char *name, int priority,
 
   /* Initialise child_info struct. */
   child_info->child_pid = tid;
-  child_info->load_success = false;
   sema_init (&child_info->load_sema, 0);
   sema_init (&child_info->exit_sema, 0);
   lock_init (&child_info->exists_lock);

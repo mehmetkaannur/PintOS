@@ -277,19 +277,18 @@ start_process (void *args_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (args->argv[0], &if_.eip, &if_.esp);
 
+  /* Relay load status to parent. */
+  cur->child_info->load_success = success;
+  sema_up (&cur->child_info->load_sema);
+
   /* If load failed, quit. */
   if (!success) 
     {
-      sema_up (&cur->child_info->load_sema);
       palloc_free_page (args->argv[0]);
       free (args->argv);
       free (args);
       thread_exit ();
     }
-
-  /* Indicate to parent that load was successful. */
-  cur->child_info->load_success = true;
-  sema_up (&cur->child_info->load_sema);
 
   /* Setup stack with arguments. */
   setup_stack_args (args->argc, args->argv, &if_.esp);
@@ -372,8 +371,8 @@ process_exit (void)
   if (cur->child_info->parent_exists)
     {
       /* Indicate to parent that child has exited. */
-      sema_up (&cur->child_info->exit_sema);
       cur->child_info->child_exists = false;
+      sema_up (&cur->child_info->exit_sema);
     }
   /* If both parent and child have died, should free child_info struct. */
   else
@@ -543,8 +542,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+  /* Deny writing to executable file while process is running. */
   file_deny_write (file);
-  t->executable = file; // Assign executable file to thread
+  t->executable = file;
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
