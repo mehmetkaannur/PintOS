@@ -33,6 +33,8 @@ static void child_info_destroy (struct hash_elem *e, void *aux UNUSED);
 static unsigned fd_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool fd_less (const struct hash_elem *a, const struct hash_elem *b,
                      void *aux UNUSED);
+static void push_to_stack (void *arg, char **esp, size_t size);
+static void push_string_to_stack (char *arg, char **esp);
 
 /* Argument passing information for start_process. */
 struct process_args
@@ -202,10 +204,20 @@ push_to_stack (void *arg, char **esp, size_t size)
   memcpy (*esp, &arg, size);
 }
 
+/* Push string argument ARG to stack given by ESP. */
+static void
+push_string_to_stack (char *arg, char **esp)
+{
+  size_t arglen = strlen (arg) + 1; 
+  *esp -= arglen;
+  strlcpy (*esp, arg, arglen);
+}
+
 /* Setup stack with arguments according to 80x86 calling convention. */
 static void
 setup_stack_args (int argc, char *argv[], void **sp_)
 {
+  /* Malloc array to prevent overflow of stack. */
   char **argvp = malloc (argc * sizeof (char *));
   
   /* Check if malloc was successful. */
@@ -215,15 +227,11 @@ setup_stack_args (int argc, char *argv[], void **sp_)
     }
 
   char **sp = (char **) sp_;
-  size_t arglen;
 
   /* Push arguments to stack. */
   for (int i = argc - 1; i >= 0; i--)
     {
-      arglen = strlen (argv[i]) + 1; 
-      *sp -= arglen;
-      strlcpy (*sp, argv[i], arglen);
-      
+      push_string_to_stack (argv[i], sp);
       argvp[i] = *sp;
     }
   
