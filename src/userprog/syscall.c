@@ -44,6 +44,10 @@ static void syscall_handler (struct intr_frame *);
 
 typedef void *(*syscall_func_t) (void *argv[]);
 
+static void validate_user_pointer (const void *uaddr);
+static void validate_user_string (const char *uaddr, int max_len);
+static void validate_user_data (const void *uaddr, unsigned size);
+
 /* Entry with information on how to handle syscall. */
 struct syscall_info
   {
@@ -82,11 +86,25 @@ static void
 validate_user_pointer (const void *uaddr)
 {
   struct thread *t = thread_current ();
-  if (!is_user_vaddr (uaddr) || 
-      pagedir_get_page (t->pagedir, uaddr) == NULL)
+  if (!is_user_vaddr (uaddr) || pagedir_get_page (t->pagedir, uaddr) == NULL)
     {
       thread_exit ();
     }
+}
+
+/* Validate a string UADDR provided by user with max length MAX_LEN. */
+static void
+validate_user_string (const char *uaddr, int max_len)
+{
+  for (int i = 0; i < max_len; i++)
+    {
+      validate_user_pointer (uaddr + i);
+      if (uaddr[i] == '\0')
+        {
+          return;
+        }
+    }
+  thread_exit ();
 }
 
 /* Returns a new file descriptor for the current thread to use. */
@@ -97,16 +115,18 @@ allocate_fd (void)
   return t->next_fd++;
 }
 
-/* Validates user buffer with given size. */
+/* Validates user data of given size. */
 static void
-validate_user_buffer (const void *buffer, unsigned size)
+validate_user_data (const void *uaddr, unsigned size)
 {
-  uintptr_t ptr = (uintptr_t) buffer;
+  uintptr_t ptr = (uintptr_t) uaddr;
   const uintptr_t end = ptr + size;
-  uintptr_t page_boundary = (uintptr_t) pg_round_down (buffer);
+  uintptr_t page_boundary = (uintptr_t) pg_round_down (uaddr);
   while (ptr < end)
     {
+      /* Check if user-provided pointer is valid. */
       validate_user_pointer ((void *) ptr);
+
       /* Advance to next page boundary or end. */
       page_boundary += PGSIZE;
       ptr = page_boundary < end ? page_boundary : end;
@@ -143,7 +163,7 @@ static void
 syscall_handler (struct intr_frame *f) 
 {
   /* Get info for handling syscall based on syscall_number. */
-  validate_user_pointer (f->esp);
+  validate_user_data (f->esp, 4);
   int syscall_number = *(int *) f->esp;
   int syscall_entries = sizeof (syscall_table) / sizeof (struct syscall_info);
   if (syscall_number < 0 || syscall_number >= syscall_entries)
@@ -156,7 +176,7 @@ syscall_handler (struct intr_frame *f)
   void *argv[info.argc];
   for (int i = 0; i < info.argc; i++) 
     {
-      validate_user_pointer ((int *) f->esp + i + 1); 
+      validate_user_data ((int *) f->esp + i + 1, 4);
       argv[i] = (void *) *((int *) f->esp + i + 1);
     }
 
@@ -192,7 +212,7 @@ static pid_t
 sys_exec (void *argv[])
 {
   const char *cmd_line = (const char *) argv[0];
-  validate_user_pointer (cmd_line);
+  validate_user_string (cmd_line, PGSIZE);
   
   tid_t tid = process_execute (cmd_line);
 
@@ -234,11 +254,7 @@ sys_create (void *argv[])
   unsigned initial_size = (unsigned) argv[1];
   
   /* Check if file name is valid. */
-  validate_user_pointer (file);
-  if (strlen (file) > READDIR_MAX_LEN)
-    {
-      return false;
-    }
+  validate_user_data (file, READDIR_MAX_LEN);
   
   /* Create file in file system. */
   lock_acquire (&filesys_lock);
@@ -255,7 +271,7 @@ sys_remove (void *argv[])
   const char *file = (const char *) argv[0];
 
   /* Check if file name is valid. */
-  validate_user_pointer (file);
+  validate_user_data (file, READDIR_MAX_LEN);
 
   /* Remove file from file system. */
   lock_acquire (&filesys_lock);
@@ -272,21 +288,7 @@ sys_open (void *argv[])
   const char *file_name = (const char *) argv[0];
 
   /* Check if file name is valid. */
-  bool terminated = false;
-  for (int i = 0; i < READDIR_MAX_LEN; i++)
-    {
-      validate_user_pointer (file_name + i);
-      if (file_name[i] == '\0')
-        {
-          terminated = true;
-          break;
-        }
-    }
-
-  if (!terminated)
-    {
-      thread_exit ();
-    }
+  validate_user_string (file_name, READDIR_MAX_LEN);
 
   /* Open file in file system. */
   lock_acquire (&filesys_lock);
@@ -345,7 +347,7 @@ sys_read (void *argv[])
   unsigned size = (unsigned) argv[2];
 
   /* Check if buffer is valid. */
-  validate_user_buffer (buffer, size);
+  validate_user_data (buffer, size);
 
   if (fd == STDIN_FILENO) 
     {
@@ -381,7 +383,7 @@ sys_write (void *argv[])
   unsigned size = (unsigned) argv[2];
   
   /* Check if buffer is valid. */
-  validate_user_buffer (buffer, size);
+  validate_user_data (buffer, size);
 
   if (fd == STDOUT_FILENO)
     {
