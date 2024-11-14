@@ -107,14 +107,6 @@ validate_user_string (const char *uaddr, int max_len)
   thread_exit ();
 }
 
-/* Returns a new file descriptor for the current thread to use. */
-static int
-allocate_fd (void)
-{
-  struct thread *t = thread_current ();
-  return t->next_fd++;
-}
-
 /* Validates user data of given size. */
 static void
 validate_user_data (const void *uaddr, unsigned size)
@@ -310,7 +302,7 @@ sys_open (void *argv[])
     }
 
   /* Add file to file descriptor map. */
-  int fd = allocate_fd ();
+  int fd = thread_current ()->next_fd++;
   fd_file->fd = fd;
   fd_file->file = file;
   hash_insert (&thread_current ()->fd_file_map, &fd_file->hash_elem);
