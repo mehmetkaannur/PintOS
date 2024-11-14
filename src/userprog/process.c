@@ -341,6 +341,11 @@ process_wait (tid_t child_tid)
   /* Wait for child to exit. */
   sema_down (&child_info->exit_sema);
 
+  /* Must ensure child is not still holding exists_lock before freeing
+     child_info struct. */
+  lock_acquire (&child_info->exists_lock);
+  lock_release (&child_info->exists_lock);
+
   int status = child_info->status;
   
   /* Remove child_info from parent's hashmap as waiting only allowed once. 
@@ -360,15 +365,14 @@ process_exit (void)
   /* Print termination message. */
   printf ("%s: exit(%d)\n", cur->name, cur->child_info->status);
 
-  /* Indicate to parent that child has exited. */
-  sema_up (&cur->child_info->exit_sema);
-  
   bool should_free = false;
 
   lock_acquire (&cur->child_info->exists_lock);  
   /* Inform parent thread that this process has exited. */
   if (cur->child_info->parent_exists)
     {
+      /* Indicate to parent that child has exited. */
+      sema_up (&cur->child_info->exit_sema);
       cur->child_info->child_exists = false;
     }
   /* If both parent and child have died, should free child_info struct. */
