@@ -25,6 +25,7 @@
 
 #define WORD_SIZE 4
 #define NUM_ADDITIONAL_STACK_ADDRS 4
+#define INITIAL_NEXT_FD 2
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -304,7 +305,7 @@ start_process (void *args_)
     {
       thread_exit ();
     }
-  cur->next_fd = 2;
+  cur->next_fd = INITIAL_NEXT_FD;
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -652,8 +653,13 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
     return false; 
 
   /* p_offset must point within FILE. */
+  lock_acquire (&filesys_lock);
   if (phdr->p_offset > (Elf32_Off) file_length (file)) 
-    return false;
+    {
+      lock_release (&filesys_lock);
+      return false;
+    }
+  lock_release (&filesys_lock);
 
   /* p_memsz must be at least as big as p_filesz. */
   if (phdr->p_memsz < phdr->p_filesz) 
@@ -709,7 +715,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  lock_acquire (&filesys_lock);
   file_seek (file, ofs);
+  lock_release (&filesys_lock);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -747,9 +755,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       }
 
       /* Load data into the page. */
+      lock_acquire (&filesys_lock);
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes){
+        lock_release (&filesys_lock);
         return false; 
       }
+      lock_release (&filesys_lock);
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       /* Advance. */

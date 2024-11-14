@@ -453,8 +453,6 @@ sys_close (void *argv[])
 {
   int fd = (int) argv[0];
 
-  lock_acquire (&filesys_lock);
-
   /* Remove the file descriptor from the hash table */
   struct fd_file f;
   f.fd = fd;
@@ -462,10 +460,10 @@ sys_close (void *argv[])
                                      &f.hash_elem);
   if (e != NULL)
     {
+      lock_acquire (&filesys_lock);
       fd_file_destroy (e, NULL);
+      lock_release (&filesys_lock);
     }
-
-  lock_release (&filesys_lock);
 }
 
 static mapid_t
