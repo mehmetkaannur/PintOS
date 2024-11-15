@@ -25,15 +25,11 @@
 
 #define WORD_SIZE 4
 #define NUM_ADDITIONAL_STACK_ADDRS 4
-#define INITIAL_NEXT_FD 2
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void setup_stack_args (int argc, char *argv[], void **esp);
 static void child_info_destroy (struct hash_elem *e, void *aux UNUSED);
-static unsigned fd_hash (const struct hash_elem *e, void *aux UNUSED);
-static bool fd_less (const struct hash_elem *a, const struct hash_elem *b,
-                     void *aux UNUSED);
 static void push_to_stack (void *arg, char **esp, size_t size);
 static void push_string_to_stack (char *arg, char **esp);
 
@@ -72,25 +68,7 @@ child_info_destroy (struct hash_elem *e, void *aux UNUSED)
     }
 }
 
-/* Hash function for file descriptor. */
-static unsigned 
-fd_hash (const struct hash_elem *e, void *aux UNUSED) 
-{
-  const struct fd_file *f = hash_entry (e, struct fd_file, hash_elem);
-  return hash_int (f->fd);
-}
-
-/* Comparison function for file descriptor. */
-static bool 
-fd_less (const struct hash_elem *a, const struct hash_elem *b,
-         void *aux UNUSED) 
-{
-  const struct fd_file *fa = hash_entry (a, struct fd_file, hash_elem);
-  const struct fd_file *fb = hash_entry (b, struct fd_file, hash_elem);
-  return fa->fd < fb->fd;
-}
-
-/* Destroys fd_file struct. */
+/* Destroys fd_file struct. Caller must hold the file_sys lock.  */
 void
 fd_file_destroy (struct hash_elem *e, void *aux UNUSED)
 {
@@ -296,15 +274,6 @@ start_process (void *args_)
   palloc_free_page (args->argv[0]);
   free (args->argv);
   free (args);
-
-  /* Initialise fd_file_map. */
-  bool fd_file_map_success = hash_init (&cur->fd_file_map, fd_hash, 
-                                        fd_less, NULL);
-  if (!fd_file_map_success)
-    {
-      thread_exit ();
-    }
-  cur->next_fd = INITIAL_NEXT_FD;
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in

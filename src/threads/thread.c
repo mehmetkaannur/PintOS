@@ -20,6 +20,10 @@
 #include "userprog/process.h"
 #endif
 
+/* First free FD (after STDIN_FD and STDOUT_FD) when
+   initialising fd_hash_map. */
+#define INITIAL_NEXT_FD 2
+
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -91,6 +95,27 @@ static int bound_nice (int nice);
 
 static hash_hash_func hash_child_info;
 static hash_less_func less_child_info;
+
+static hash_hash_func hash_fd;
+static hash_less_func hash_less;
+
+/* Hash function for file descriptor. */
+static unsigned 
+hash_fd (const struct hash_elem *e, void *aux UNUSED) 
+{
+  const struct fd_file *f = hash_entry (e, struct fd_file, hash_elem);
+  return hash_int (f->fd);
+}
+
+/* Comparison function for file descriptor. */
+static bool 
+hash_less (const struct hash_elem *a, const struct hash_elem *b,
+         void *aux UNUSED) 
+{
+  const struct fd_file *fa = hash_entry (a, struct fd_file, hash_elem);
+  const struct fd_file *fb = hash_entry (b, struct fd_file, hash_elem);
+  return fa->fd < fb->fd;
+}
 
 /* Hash function for child_info struct. */
 static unsigned
@@ -422,6 +447,16 @@ thread_create (const char *name, int priority,
 
   /* Insert child_info struct into children_map of parent. */
   hash_insert (&thread_current ()->children_map, &child_info->elem);
+
+  /* Initialise fd_file_map. */
+  bool fd_file_map_success = hash_init (&t->fd_file_map, hash_fd, 
+                                        hash_less, NULL);
+  if (!fd_file_map_success)
+    {
+      thread_exit ();
+    }
+  t->next_fd = INITIAL_NEXT_FD;
+
 #endif
 
   /* Prepare thread for first run by initializing its stack.
