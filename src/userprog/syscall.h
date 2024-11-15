@@ -8,11 +8,12 @@
 void syscall_init (void);
 
 /* File with file descriptor (fd). */
-struct fd_file {
-  int fd;                               /* File descriptor. */
-  struct file *file;                    /* File pointer. */ 
-  struct hash_elem hash_elem;           /* Hash element. */
-};
+struct fd_file
+  {
+    int fd;                               /* File descriptor. */
+    struct file *file;                    /* File pointer. */ 
+    struct hash_elem hash_elem;           /* Hash element. */
+  };
 
 /* Lock to synchronize file system operations. */
 struct lock filesys_lock;

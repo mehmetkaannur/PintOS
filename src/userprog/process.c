@@ -25,6 +25,7 @@
 
 #define WORD_SIZE 4
 #define NUM_ADDITIONAL_STACK_ADDRS 4
+#define INITIAL_NEXT_FD 2
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -33,6 +34,8 @@ static void child_info_destroy (struct hash_elem *e, void *aux UNUSED);
 static unsigned fd_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool fd_less (const struct hash_elem *a, const struct hash_elem *b,
                      void *aux UNUSED);
+static void push_to_stack (void *arg, char **esp, size_t size);
+static void push_string_to_stack (char *arg, char **esp);
 
 /* Argument passing information for start_process. */
 struct process_args
@@ -202,10 +205,20 @@ push_to_stack (void *arg, char **esp, size_t size)
   memcpy (*esp, &arg, size);
 }
 
+/* Push string argument ARG to stack given by ESP. */
+static void
+push_string_to_stack (char *arg, char **esp)
+{
+  size_t arglen = strlen (arg) + 1; 
+  *esp -= arglen;
+  strlcpy (*esp, arg, arglen);
+}
+
 /* Setup stack with arguments according to 80x86 calling convention. */
 static void
 setup_stack_args (int argc, char *argv[], void **sp_)
 {
+  /* Malloc array to prevent overflow of stack. */
   char **argvp = malloc (argc * sizeof (char *));
   
   /* Check if malloc was successful. */
@@ -215,15 +228,11 @@ setup_stack_args (int argc, char *argv[], void **sp_)
     }
 
   char **sp = (char **) sp_;
-  size_t arglen;
 
   /* Push arguments to stack. */
   for (int i = argc - 1; i >= 0; i--)
     {
-      arglen = strlen (argv[i]) + 1; 
-      *sp -= arglen;
-      strlcpy (*sp, argv[i], arglen);
-      
+      push_string_to_stack (argv[i], sp);
       argvp[i] = *sp;
     }
   
@@ -268,19 +277,18 @@ start_process (void *args_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (args->argv[0], &if_.eip, &if_.esp);
 
+  /* Relay load status to parent. */
+  cur->child_info->load_success = success;
+  sema_up (&cur->child_info->load_sema);
+
   /* If load failed, quit. */
   if (!success) 
     {
-      sema_up (&cur->child_info->load_sema);
       palloc_free_page (args->argv[0]);
       free (args->argv);
       free (args);
       thread_exit ();
     }
-
-  /* Indicate to parent that load was successful. */
-  cur->child_info->load_success = true;
-  sema_up (&cur->child_info->load_sema);
 
   /* Setup stack with arguments. */
   setup_stack_args (args->argc, args->argv, &if_.esp);
@@ -296,7 +304,7 @@ start_process (void *args_)
     {
       thread_exit ();
     }
-  cur->next_fd = 2;
+  cur->next_fd = INITIAL_NEXT_FD;
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -332,6 +340,11 @@ process_wait (tid_t child_tid)
   /* Wait for child to exit. */
   sema_down (&child_info->exit_sema);
 
+  /* Must ensure child is not still holding exists_lock before freeing
+     child_info struct. */
+  lock_acquire (&child_info->exists_lock);
+  lock_release (&child_info->exists_lock);
+
   int status = child_info->status;
   
   /* Remove child_info from parent's hashmap as waiting only allowed once. 
@@ -351,16 +364,15 @@ process_exit (void)
   /* Print termination message. */
   printf ("%s: exit(%d)\n", cur->name, cur->child_info->status);
 
-  /* Indicate to parent that child has exited. */
-  sema_up (&cur->child_info->exit_sema);
-  
   bool should_free = false;
 
   lock_acquire (&cur->child_info->exists_lock);  
   /* Inform parent thread that this process has exited. */
   if (cur->child_info->parent_exists)
     {
+      /* Indicate to parent that child has exited. */
       cur->child_info->child_exists = false;
+      sema_up (&cur->child_info->exit_sema);
     }
   /* If both parent and child have died, should free child_info struct. */
   else
@@ -530,8 +542,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+  /* Deny writing to executable file while process is running. */
   file_deny_write (file);
-  t->executable = file; // Assign executable file to thread
+  t->executable = file;
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -644,8 +657,13 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
     return false; 
 
   /* p_offset must point within FILE. */
+  lock_acquire (&filesys_lock);
   if (phdr->p_offset > (Elf32_Off) file_length (file)) 
-    return false;
+    {
+      lock_release (&filesys_lock);
+      return false;
+    }
+  lock_release (&filesys_lock);
 
   /* p_memsz must be at least as big as p_filesz. */
   if (phdr->p_memsz < phdr->p_filesz) 
@@ -701,7 +719,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  lock_acquire (&filesys_lock);
   file_seek (file, ofs);
+  lock_release (&filesys_lock);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -739,9 +759,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       }
 
       /* Load data into the page. */
+      lock_acquire (&filesys_lock);
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes){
+        lock_release (&filesys_lock);
         return false; 
       }
+      lock_release (&filesys_lock);
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       /* Advance. */

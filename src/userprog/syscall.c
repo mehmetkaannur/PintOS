@@ -16,7 +16,8 @@
 #include "devices/shutdown.h"
 
 #define CONSOLE_BUFFER_SIZE 100
-#define INVALID_FD -1
+#define SYS_ERROR -1
+#define WORD_SIZE 4
 
 /* Functions to handle syscalls. */
 static void sys_halt (void *argv[] UNUSED);
@@ -155,7 +156,7 @@ static void
 syscall_handler (struct intr_frame *f) 
 {
   /* Get info for handling syscall based on syscall_number. */
-  validate_user_data (f->esp, 4);
+  validate_user_data (f->esp, WORD_SIZE);
   int syscall_number = *(int *) f->esp;
   int syscall_entries = sizeof (syscall_table) / sizeof (struct syscall_info);
   if (syscall_number < 0 || syscall_number >= syscall_entries)
@@ -168,7 +169,7 @@ syscall_handler (struct intr_frame *f)
   void *argv[info.argc];
   for (int i = 0; i < info.argc; i++) 
     {
-      validate_user_data ((int *) f->esp + i + 1, 4);
+      validate_user_data ((int *) f->esp + i + 1, WORD_SIZE);
       argv[i] = (void *) *((int *) f->esp + i + 1);
     }
 
@@ -216,7 +217,7 @@ sys_exec (void *argv[])
   /* Child thread not created successfully. */
   if (e == NULL)
     {
-      return -1;
+      return SYS_ERROR;
     }
     
   /* Check if child process loaded successfully. */
@@ -224,7 +225,7 @@ sys_exec (void *argv[])
   sema_down (&child_info->load_sema);
   if (!child_info->load_success)
     {
-      return -1;
+      return SYS_ERROR;
     }
 
   return tid;
@@ -290,7 +291,7 @@ sys_open (void *argv[])
   /* Check if file could not be opened. */
   if (file == NULL) 
     {
-      return INVALID_FD;
+      return SYS_ERROR;
     }
 
   struct fd_file *fd_file = malloc (sizeof (struct fd_file));
@@ -298,7 +299,7 @@ sys_open (void *argv[])
   /* Check if malloc was successful. */
   if (fd_file == NULL) 
     {
-      return -1;
+      return SYS_ERROR;
     }
 
   /* Add file to file descriptor map. */
@@ -320,7 +321,7 @@ sys_filesize (void *argv[])
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      return INVALID_FD;
+      return SYS_ERROR;
     }
 
   lock_acquire (&filesys_lock);
@@ -355,7 +356,7 @@ sys_read (void *argv[])
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      return INVALID_FD;
+      return SYS_ERROR;
     }
   
   /* Read from file. */
@@ -394,7 +395,7 @@ sys_write (void *argv[])
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      return INVALID_FD;
+      return SYS_ERROR;
     }
 
   /* Write to file. */
@@ -435,7 +436,7 @@ sys_tell (void *argv[])
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      return INVALID_FD;
+      return SYS_ERROR;
     }
   
   /* Return the position of the next byte to be read or written */
@@ -452,8 +453,6 @@ sys_close (void *argv[])
 {
   int fd = (int) argv[0];
 
-  lock_acquire (&filesys_lock);
-
   /* Remove the file descriptor from the hash table */
   struct fd_file f;
   f.fd = fd;
@@ -461,10 +460,10 @@ sys_close (void *argv[])
                                      &f.hash_elem);
   if (e != NULL)
     {
+      lock_acquire (&filesys_lock);
       fd_file_destroy (e, NULL);
+      lock_release (&filesys_lock);
     }
-
-  lock_release (&filesys_lock);
 }
 
 static mapid_t
