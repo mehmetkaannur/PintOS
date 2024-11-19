@@ -32,6 +32,8 @@ static void setup_stack_args (int argc, char *argv[], void **esp);
 static void child_info_destroy (struct hash_elem *e, void *aux UNUSED);
 static void push_to_stack (void *arg, char **esp, size_t size);
 static void push_string_to_stack (char *arg, char **esp);
+static void *get_user_frame (enum palloc_flags flags);
+static void free_user_frame (void *frame);
 
 /* Argument passing information for start_process. */
 struct process_args
@@ -66,6 +68,21 @@ child_info_destroy (struct hash_elem *e, void *aux UNUSED)
     {
       free (i);
     }
+}
+
+/* Get frame for user page. */
+static void *
+get_user_frame (enum palloc_flags flags)
+{
+  void *page = palloc_get_page (flags);
+  return page;
+}
+
+/* Free frame for user page. */
+static void
+free_user_frame (void *page)
+{
+  palloc_free_page (page);
 }
 
 /* Destroys fd_file struct. Caller must hold the file_sys lock.  */
@@ -706,7 +723,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (kpage == NULL){
         
         /* Get a new page of memory. */
-        kpage = palloc_get_page (PAL_USER);
+        kpage = get_user_frame (PAL_USER);
         if (kpage == NULL){
           return false;
         }
@@ -714,7 +731,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         /* Add the page to the process's address space. */
         if (!install_page (upage, kpage, writable)) 
         {
-          palloc_free_page (kpage);
+          free_user_frame (kpage);
           return false; 
         }     
         
@@ -752,14 +769,14 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = get_user_frame (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
       else
-        palloc_free_page (kpage);
+        free_user_frame (kpage);
     }
   return success;
 }
