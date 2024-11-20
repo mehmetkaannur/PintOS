@@ -4,6 +4,9 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "userprog/pagedir.h"
+#include "vm/page.h"
+#include "vm/frame.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -144,6 +147,53 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
+
+  /* Find relevant entry in supplemental page table. */
+  struct spt_entry spte;
+  spte.user_page = fault_addr;
+  struct hash_elem *e = hash_find (&thread_current ()->supp_page_table,
+                                   &spte.elem);
+
+  if (e != NULL)
+    {
+      struct spt_entry *spte = hash_entry (e, struct spt_entry, elem);
+
+      /* Check for write to read-only page. */
+      if (!write || spte->writable) 
+        {
+          /* Obtain a frame to store the page. */
+          void *frame = get_frame (PAL_USER);
+
+          /* Fetch data into frame. */
+          if (spte->state == SWAPPED)
+            {
+              /* Swap in the page. */
+              PANIC ("Not implemented.");
+            }
+          else if (spte->state == FILE_SYSTEM)
+            {
+               /* Load the page from the file system. */
+              PANIC ("Not implemented.");
+            }
+          else if (spte->state == ZERO)
+            {
+               /* Zero the page. */
+              PANIC ("Not implemented.");
+            }
+
+          /* Point page table entry for faulting address to frame. */
+          bool success = pagedir_set_page (thread_current ()->pagedir,
+                                           spte->user_page,
+                                           frame,
+                                           spte->writable);
+          if (!success)
+            {
+              free_frame (frame);
+            }
+
+          return;
+        }
+    }
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
