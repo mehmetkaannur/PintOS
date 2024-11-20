@@ -1,8 +1,12 @@
 #include <debug.h>
 #include "vm/frame.h"
+#include "threads/synch.h"
 
 /* Frame table hash map. */
 struct hash frame_table;
+
+/* Lock for frame table. */
+struct lock frame_table_lock;
 
 static hash_hash_func hash_frame_table_entry;
 static hash_less_func less_frame_table_entry;
@@ -37,6 +41,13 @@ less_frame_table_entry (const struct hash_elem *a,
 void
 frame_table_init (void)
 {
-  hash_init (&frame_table, hash_frame_table_entry,
-             less_frame_table_entry, NULL);
+  bool success = hash_init (&frame_table, hash_frame_table_entry,
+                            less_frame_table_entry, NULL);
+
+  if (!success)
+    {
+      PANIC ("Failed to initialise frame table hash map.");
+    }
+
+  lock_init (&frame_table_lock);
 }
