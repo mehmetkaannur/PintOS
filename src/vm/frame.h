@@ -1,4 +1,5 @@
 #include <hash.h>
+#include "threads/palloc.h"
 
 /* Entry for frame table. */
 struct frame_table_entry
@@ -14,3 +15,6 @@ void frame_table_init (void);
 
 extern struct hash frame_table;
 extern struct lock frame_table_lock;
+
+void *get_frame (enum palloc_flags flags);
+void free_frame (void *frame);
