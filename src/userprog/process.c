@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <hash.h>
 #include <user/syscall.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
@@ -20,8 +21,8 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "threads/malloc.h"
-#include "hash.h"
 #include "userprog/syscall.h"
+#include "vm/frame.h"
 
 #define WORD_SIZE 4
 #define NUM_ADDITIONAL_STACK_ADDRS 4
@@ -32,6 +33,8 @@ static void setup_stack_args (int argc, char *argv[], void **esp);
 static void child_info_destroy (struct hash_elem *e, void *aux UNUSED);
 static void push_to_stack (void *arg, char **esp, size_t size);
 static void push_string_to_stack (char *arg, char **esp);
+static void *get_user_frame (enum palloc_flags flags);
+static void free_user_frame (void *frame);
 
 /* Argument passing information for start_process. */
 struct process_args
@@ -66,6 +69,54 @@ child_info_destroy (struct hash_elem *e, void *aux UNUSED)
     {
       free (i);
     }
+}
+
+/* Get frame for user page. */
+static void *
+get_user_frame (enum palloc_flags flags)
+{
+  void *page = palloc_get_page (flags);
+  
+  struct frame_table_entry *fte = malloc (sizeof (struct frame_table_entry));
+  if (fte == NULL)
+    {
+      return NULL;
+    }
+
+  /* Set up frame table entry. */
+  fte->frame = page;
+  fte->owner = thread_current ();
+  list_init (&fte->page_table_entries);
+  
+  /* Insert frame table entry into table. 
+     (frame_table_lock will be released by install_page). */
+  lock_acquire (&frame_table_lock);
+  hash_insert (&frame_table, &fte->hash_elem);
+
+  return page;
+}
+
+/* Free frame for user page. */
+static void
+free_user_frame (void *page)
+{
+  palloc_free_page (page);
+
+  struct frame_table_entry i;
+  i.frame = pagedir_get_page (thread_current ()->pagedir, page);
+
+  lock_acquire (&frame_table_lock);
+
+  /* Find relevant frame table entry. */
+  struct hash_elem *e = hash_find (&frame_table, &i.hash_elem);
+  struct frame_table_entry *fte = hash_entry (e, struct frame_table_entry,
+                                              hash_elem);
+
+  /* Remove frame table entry from frame table. */
+  hash_delete (&frame_table, &fte->hash_elem);
+  free (fte);
+
+  lock_release (&frame_table_lock);
 }
 
 /* Destroys fd_file struct. Caller must hold the file_sys lock.  */
@@ -706,7 +757,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (kpage == NULL){
         
         /* Get a new page of memory. */
-        kpage = palloc_get_page (PAL_USER);
+        kpage = get_user_frame (PAL_USER);
         if (kpage == NULL){
           return false;
         }
@@ -714,7 +765,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         /* Add the page to the process's address space. */
         if (!install_page (upage, kpage, writable)) 
         {
-          palloc_free_page (kpage);
+          free_user_frame (kpage);
           return false; 
         }     
         
@@ -752,14 +803,14 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = get_user_frame (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
       else
-        palloc_free_page (kpage);
+        free_user_frame (kpage);
     }
   return success;
 }
@@ -777,6 +828,18 @@ static bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();
+  
+  /* Find frame table entry for kpage frame. */
+  struct frame_table_entry i;
+  i.frame = kpage;
+  hash_find (&frame_table, &i.hash_elem);
+  struct frame_table_entry *fte = hash_entry (&i.hash_elem,
+                                              struct frame_table_entry,
+                                              hash_elem);
+
+  /* TODO: Insert relevant data about page table into frame table entry. */
+
+  lock_release (&frame_table_lock);
 
   /* Verify that there's not already a page at that virtual
      address, then map our page there. */
