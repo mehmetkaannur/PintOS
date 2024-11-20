@@ -118,6 +118,7 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     struct file *executable;            /* The executable file of the process */
+    struct hash supp_page_table;        /* Supplemental page table. */
 #endif
 
     /* Owned by thread.c. */

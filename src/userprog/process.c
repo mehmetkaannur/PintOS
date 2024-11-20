@@ -774,23 +774,11 @@ setup_stack (void **esp)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();
   
-  /* Find frame table entry for kpage frame. */
-  struct frame_table_entry i;
-  i.frame = kpage;
-  hash_find (&frame_table, &i.hash_elem);
-  struct frame_table_entry *fte = hash_entry (&i.hash_elem,
-                                              struct frame_table_entry,
-                                              hash_elem);
-
-  /* TODO: Insert relevant data about page table into frame table entry. */
-
-  lock_release (&frame_table_lock);
-
   /* Verify that there's not already a page at that virtual
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL

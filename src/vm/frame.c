@@ -35,6 +35,7 @@ get_frame (enum palloc_flags flags)
      (frame_table_lock will be released by install_page). */
   lock_acquire (&frame_table_lock);
   hash_insert (&frame_table, &fte->hash_elem);
+  lock_release (&frame_table_lock);
 
   return page;
 }
