@@ -33,6 +33,7 @@
 #endif
 #ifdef VM
 #include "devices/swap.h"
+#include "vm/frame.h"
 #endif
 #ifdef FILESYS
 #include "devices/block.h"
@@ -43,9 +44,6 @@
 
 /* Page directory with kernel mappings only. */
 uint32_t *init_page_dir;
-
-/* Frame table hash map. */
-struct hash frame_table;
 
 #ifdef FILESYS
 /* -f: Format the file system? */
@@ -76,44 +74,6 @@ static void locate_block_devices (void);
 static void locate_block_device (enum block_type, const char *name);
 #endif
 
-static hash_hash_func hash_frame_table_entry;
-static hash_less_func less_frame_table_entry;
-
-struct frame_table_entry
-  {
-    void *frame;                 /* Frame address. */
-    void *upage;                 /* User virtual address for page. */
-    struct thread *thread;       /* Pointer to thread which owns frame. */
-    struct hash_elem hash_elem;  /* Hash element. */
-  };
-
-/* Hash function for frame table. */
-static unsigned
-hash_frame_table_entry (const struct hash_elem *e, void *aux UNUSED)
-{
-  const struct frame_table_entry *fte = hash_entry (e,
-                                                    struct frame_table_entry,
-                                                    hash_elem);
-
-  return hash_ptr (&fte->frame);
-}
-
-/* Less function for frame table. */
-static bool
-less_frame_table_entry (const struct hash_elem *a,
-                        const struct hash_elem *b,
-                        void *aux UNUSED)
-{
-  const struct frame_table_entry *fte_a = hash_entry (a,
-                                                      struct frame_table_entry,
-                                                      hash_elem);
-  const struct frame_table_entry *fte_b = hash_entry (b,
-                                                      struct frame_table_entry,
-                                                      hash_elem);
-
-  return fte_a->frame < fte_b->frame;
-}
-
 int main (void) NO_RETURN;
 
 /* PintOS main program. */
@@ -142,8 +102,7 @@ main (void)
   palloc_init (user_page_limit);
   malloc_init ();
   paging_init ();
-  hash_init (&frame_table, hash_frame_table_entry,
-             less_frame_table_entry, NULL);
+  frame_table_init ();
 
   /* Segmentation. */
 #ifdef USERPROG
