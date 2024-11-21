@@ -1,10 +1,13 @@
 #include "userprog/exception.h"
 #include <inttypes.h>
 #include <stdio.h>
+#include <string.h>
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "userprog/pagedir.h"
+#include "userprog/syscall.h"
 #include "vm/page.h"
 #include "vm/frame.h"
 
@@ -149,10 +152,10 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
 
   /* Find relevant entry in supplemental page table. */
-  struct spt_entry spte;
-  spte.user_page = fault_addr;
+  struct spt_entry entry;
+  entry.user_page = pg_round_down (fault_addr);
   struct hash_elem *e = hash_find (&thread_current ()->supp_page_table,
-                                   &spte.elem);
+                                   &entry.elem);
 
   if (e != NULL)
     {
@@ -172,13 +175,23 @@ page_fault (struct intr_frame *f)
             }
           else if (spte->state == FILE_SYSTEM)
             {
-               /* Load the page from the file system. */
-              PANIC ("Not implemented.");
-            }
-          else if (spte->state == ZERO)
-            {
-               /* Zero the page. */
-              PANIC ("Not implemented.");
+              /* Load the page from the file system. */
+              if (spte->page_read_bytes != 0)
+                {
+                 lock_acquire (&filesys_lock);
+                 file_seek (spte->file, spte->file_ofs);
+                 if (file_read (spte->file, frame, spte->page_read_bytes)
+                     != (int) spte->page_read_bytes)
+                   {
+                     free_frame (frame);
+                     lock_release (&filesys_lock);
+                     PANIC ("Failed to read file into frame.");
+                   }
+                 lock_release (&filesys_lock);
+                }
+
+              /* Zero required number of bytes in page.*/
+              memset (frame + spte->page_read_bytes, 0, spte->page_zero_bytes);
             }
 
           /* Point page table entry for faulting address to frame. */
@@ -190,6 +203,9 @@ page_fault (struct intr_frame *f)
             {
               free_frame (frame);
             }
+
+          /* Remove supplemental page table entry. */
+          hash_delete (&thread_current ()->supp_page_table, &spte->elem);
 
           return;
         }

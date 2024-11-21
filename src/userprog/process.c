@@ -23,6 +23,7 @@
 #include "threads/malloc.h"
 #include "userprog/syscall.h"
 #include "vm/frame.h"
+#include "vm/page.h"
 
 #define WORD_SIZE 4
 #define NUM_ADDITIONAL_STACK_ADDRS 4
@@ -692,6 +693,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   lock_acquire (&filesys_lock);
   file_seek (file, ofs);
   lock_release (&filesys_lock);
+  uint32_t curr_ofs = ofs;
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -700,47 +702,32 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
       
-      /* Check if virtual page already allocated */
+      /* Set upage as unmapped. */
       struct thread *t = thread_current ();
-      uint8_t *kpage = pagedir_get_page (t->pagedir, upage);
+      pagedir_clear_page (t->pagedir, upage);
       
-      if (kpage == NULL){
-        
-        /* Get a new page of memory. */
-        kpage = get_frame (PAL_USER);
-        if (kpage == NULL){
+      /* Add entry for upage in supplemental page table. */
+      struct spt_entry *spte = malloc (sizeof (struct spt_entry));
+      if (spte == NULL)
+        {
           return false;
         }
-        
-        /* Add the page to the process's address space. */
-        if (!install_page (upage, kpage, writable)) 
-        {
-          free_frame (kpage);
-          return false; 
-        }     
-        
-      } else {
-        
-        /* Check if writable flag for the page should be updated */
-        if(writable && !pagedir_is_writable(t->pagedir, upage)){
-          pagedir_set_writable(t->pagedir, upage, writable); 
-        }
-        
-      }
 
-      /* Load data into the page. */
-      lock_acquire (&filesys_lock);
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes){
-        lock_release (&filesys_lock);
-        return false; 
-      }
-      lock_release (&filesys_lock);
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+      spte->user_page = upage;
+      spte->state = FILE_SYSTEM;
+      spte->file = file;
+      spte->file_ofs = curr_ofs; 
+      spte->page_read_bytes = page_read_bytes;
+      spte->page_zero_bytes = page_zero_bytes;
+      spte->writable = writable;
+
+      hash_insert (&t->supp_page_table, &spte->elem);
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+      curr_ofs += page_read_bytes;
     }
   return true;
 }
