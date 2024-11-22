@@ -20,34 +20,34 @@
 #define WORD_SIZE 4
 
 /* Functions to handle syscalls. */
-static void sys_halt (void *argv[] UNUSED);
-static void sys_exit (void *argv[]);
-static pid_t sys_exec (void *argv[]);
-static int sys_wait (void *argv[]);
-static bool sys_create (void *argv[]);
-static bool sys_remove (void *argv[]);
-static int sys_open (void *argv[]);
-static int sys_filesize (void *argv[]);
-static int sys_read (void *argv[]);
-static int sys_write (void *argv[]);
-static void sys_seek (void *argv[]);
-static unsigned sys_tell (void *argv[]);
-static void sys_close (void *argv[]);
-static mapid_t sys_mmap (void *argv[]);
-static void sys_munmap (void *argv[]);
-static bool sys_chdir (void *argv[]);
-static bool sys_mkdir (void *argv[]);
-static bool sys_readdir (void *argv[]);
-static bool sys_isdir (void *argv[]);
-static int sys_inumber (void *argv[]);
+static void sys_halt (void *argv[] UNUSED, void *esp UNUSED);
+static void sys_exit (void *argv[], void *esp UNUSED);
+static pid_t sys_exec (void *argv[], void *esp);
+static int sys_wait (void *argv[], void *esp UNUSED);
+static bool sys_create (void *argv[], void *esp);
+static bool sys_remove (void *argv[], void *esp);
+static int sys_open (void *argv[], void *esp);
+static int sys_filesize (void *argv[], void *esp UNUSED);
+static int sys_read (void *argv[], void *esp);
+static int sys_write (void *argv[], void *esp);
+static void sys_seek (void *argv[], void *esp UNUSED);
+static unsigned sys_tell (void *argv[], void *esp UNUSED);
+static void sys_close (void *argv[], void *esp UNUSED);
+static mapid_t sys_mmap (void *argv[], void *esp);
+static void sys_munmap (void *argv[], void *esp UNUSED);
+static bool sys_chdir (void *argv[], void *esp UNUSED);
+static bool sys_mkdir (void *argv[], void *esp UNUSED);
+static bool sys_readdir (void *argv[], void *esp UNUSED);
+static bool sys_isdir (void *argv[], void *esp UNUSED);
+static int sys_inumber (void *argv[], void *esp UNUSED);
 
 static void syscall_handler (struct intr_frame *);
 
-typedef void *(*syscall_func_t) (void *argv[]);
+typedef void *(*syscall_func_t) (void *argv[], void *esp);
 
-static void validate_user_pointer (const void *uaddr);
-static void validate_user_string (const char *uaddr, int max_len);
-static void validate_user_data (const void *uaddr, unsigned size);
+static void validate_user_pointer (const void *uaddr, void *esp);
+static void validate_user_string (const char *uaddr, int max_len, void *esp);
+static void validate_user_data (const void *uaddr, unsigned size, void *esp);
 
 /* Entry with information on how to handle syscall. */
 struct syscall_info
@@ -84,22 +84,31 @@ static struct syscall_info syscall_table[] = {
 /* Checks if the pointer given by the user is a valid pointer
    and terminates user process if not. */
 static void
-validate_user_pointer (const void *uaddr)
+validate_user_pointer (const void *uaddr, void *esp UNUSED)
 {
   struct thread *t = thread_current ();
+  
+  /* Check for invalid uaddr. */
   if (!is_user_vaddr (uaddr) || pagedir_get_page (t->pagedir, uaddr) == NULL)
     {
+  
+      /* Grow user stack if necessary. */
+      if (grow_stack (uaddr, esp))
+        {
+          return;
+        }
+      
       thread_exit ();
     }
 }
 
 /* Validate a string UADDR provided by user with max length MAX_LEN. */
 static void
-validate_user_string (const char *uaddr, int max_len)
+validate_user_string (const char *uaddr, int max_len, void *esp)
 {
   for (int i = 0; i < max_len; i++)
     {
-      validate_user_pointer (uaddr + i);
+      validate_user_pointer (uaddr + i, esp);
       if (uaddr[i] == '\0')
         {
           return;
@@ -110,7 +119,7 @@ validate_user_string (const char *uaddr, int max_len)
 
 /* Validates user data of given size. */
 static void
-validate_user_data (const void *uaddr, unsigned size)
+validate_user_data (const void *uaddr, unsigned size, void *esp)
 {
   uintptr_t ptr = (uintptr_t) uaddr;
   const uintptr_t end = ptr + size;
@@ -118,7 +127,7 @@ validate_user_data (const void *uaddr, unsigned size)
   while (ptr < end)
     {
       /* Check if user-provided pointer is valid. */
-      validate_user_pointer ((void *) ptr);
+      validate_user_pointer ((void *) ptr, esp);
 
       /* Advance to next page boundary or end. */
       page_boundary += PGSIZE;
@@ -156,7 +165,7 @@ static void
 syscall_handler (struct intr_frame *f) 
 {
   /* Get info for handling syscall based on syscall_number. */
-  validate_user_data (f->esp, WORD_SIZE);
+  validate_user_data (f->esp, WORD_SIZE, f->esp);
   int syscall_number = *(int *) f->esp;
   int syscall_entries = sizeof (syscall_table) / sizeof (struct syscall_info);
   if (syscall_number < 0 || syscall_number >= syscall_entries)
@@ -169,12 +178,12 @@ syscall_handler (struct intr_frame *f)
   void *argv[info.argc];
   for (int i = 0; i < info.argc; i++) 
     {
-      validate_user_data ((int *) f->esp + i + 1, WORD_SIZE);
+      validate_user_data ((int *) f->esp + i + 1, WORD_SIZE, f->esp);
       argv[i] = (void *) *((int *) f->esp + i + 1);
     }
 
   /* Store result of function if any in eax field. */
-  int res = (int) info.f (argv);
+  int res = (int) info.f (argv, f->esp);
   if (info.has_result) 
     {
       f->eax = res;
@@ -183,14 +192,14 @@ syscall_handler (struct intr_frame *f)
 
 /* Helper function for halt system call. */
 static void
-sys_halt (void *argv[] UNUSED)
+sys_halt (void *argv[] UNUSED, void *esp UNUSED)
 {
   shutdown_power_off ();
 }
 
 /* Helper function for exit system call. */
 static void
-sys_exit (void *argv[])
+sys_exit (void *argv[], void *esp UNUSED)
 {
   int status = (int) argv[0];
 
@@ -202,10 +211,10 @@ sys_exit (void *argv[])
 
 /* Helper function for exec system call. */
 static pid_t
-sys_exec (void *argv[])
+sys_exec (void *argv[], void *esp)
 {
   const char *cmd_line = (const char *) argv[0];
-  validate_user_string (cmd_line, PGSIZE);
+  validate_user_string (cmd_line, PGSIZE, esp);
   
   tid_t tid = process_execute (cmd_line);
 
@@ -233,7 +242,7 @@ sys_exec (void *argv[])
 
 /* Helper function for wait system call. */
 static int
-sys_wait (void *argv[])
+sys_wait (void *argv[], void *esp UNUSED)
 {
   int pid = (int) argv[0];
   return process_wait (pid);
@@ -241,13 +250,13 @@ sys_wait (void *argv[])
 
 /* Helper function for create system call. */
 static bool
-sys_create (void *argv[])
+sys_create (void *argv[], void *esp)
 {
   const char *file = (const char *) argv[0];
   unsigned initial_size = (unsigned) argv[1];
   
   /* Check if file name is valid. */
-  validate_user_data (file, READDIR_MAX_LEN);
+  validate_user_data (file, READDIR_MAX_LEN, esp);
   
   /* Create file in file system. */
   lock_acquire (&filesys_lock);
@@ -259,12 +268,12 @@ sys_create (void *argv[])
 
 /* Helper function for remove system call. */
 static bool
-sys_remove (void *argv[])
+sys_remove (void *argv[], void *esp)
 {
   const char *file = (const char *) argv[0];
 
   /* Check if file name is valid. */
-  validate_user_data (file, READDIR_MAX_LEN);
+  validate_user_data (file, READDIR_MAX_LEN, esp);
 
   /* Remove file from file system. */
   lock_acquire (&filesys_lock);
@@ -276,12 +285,12 @@ sys_remove (void *argv[])
 
 /* Helper function for open system call. */
 static int
-sys_open (void *argv[])
+sys_open (void *argv[], void *esp)
 {
   const char *file_name = (const char *) argv[0];
 
   /* Check if file name is valid. */
-  validate_user_string (file_name, READDIR_MAX_LEN);
+  validate_user_string (file_name, READDIR_MAX_LEN, esp);
 
   /* Open file in file system. */
   lock_acquire (&filesys_lock);
@@ -313,7 +322,7 @@ sys_open (void *argv[])
 
 /* Helper function for filesize system call. */
 static int
-sys_filesize (void *argv[])
+sys_filesize (void *argv[], void *esp UNUSED)
 {
   int fd = (int) argv[0];
   
@@ -333,14 +342,14 @@ sys_filesize (void *argv[])
 
 /* Helper function for read system call. */
 static int
-sys_read (void *argv[])
+sys_read (void *argv[], void *esp)
 {
   int fd = (int) argv[0];
   void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
 
   /* Check if buffer is valid. */
-  validate_user_data (buffer, size);
+  validate_user_data (buffer, size, esp);
 
   if (fd == STDIN_FILENO) 
     {
@@ -369,14 +378,14 @@ sys_read (void *argv[])
 
 /* Helper function for write system call. */
 static int
-sys_write (void *argv[])
+sys_write (void *argv[], void *esp)
 {
   int fd = (int) argv[0];
   const void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
   
   /* Check if buffer is valid. */
-  validate_user_data (buffer, size);
+  validate_user_data (buffer, size, esp);
 
   if (fd == STDOUT_FILENO)
     {
@@ -408,7 +417,7 @@ sys_write (void *argv[])
 
 /* Helper function for seek system call. */
 static void
-sys_seek (void *argv[])
+sys_seek (void *argv[], void *esp UNUSED)
 {
   int fd = (int) argv[0];
   unsigned position = (unsigned) argv[1];
@@ -428,7 +437,7 @@ sys_seek (void *argv[])
 
 /* Helper function for tell system call. */
 static unsigned
-sys_tell (void *argv[])
+sys_tell (void *argv[], void *esp UNUSED)
 {
   int fd = (int) argv[0];
 
@@ -449,7 +458,7 @@ sys_tell (void *argv[])
 
 /* Helper function for close system call. */
 static void
-sys_close (void *argv[])
+sys_close (void *argv[], void *esp UNUSED)
 {
   int fd = (int) argv[0];
 
@@ -467,7 +476,7 @@ sys_close (void *argv[])
 }
 
 static mapid_t
-sys_mmap (void *argv[])
+sys_mmap (void *argv[], void *esp UNUSED)
 {
   int fd = (int) argv[0];
   void *addr = argv[1];
@@ -475,27 +484,27 @@ sys_mmap (void *argv[])
 }
 
 static void
-sys_munmap (void *argv[])
+sys_munmap (void *argv[], void *esp UNUSED)
 {
   int mapid = (int) argv[0];
 }
 
 static bool
-sys_chdir (void *argv[])
+sys_chdir (void *argv[], void *esp UNUSED)
 {
   const char *dir = (const char *) argv[0];
   return false;
 }
 
 static bool
-sys_mkdir (void *argv[])
+sys_mkdir (void *argv[], void *esp UNUSED)
 {
   const char *dir = (const char *) argv[0];
   return false;
 }
 
 static bool
-sys_readdir (void *argv[])
+sys_readdir (void *argv[], void *esp UNUSED)
 {
   int fd = (int) argv[0];
   char *name = (char *) argv[1];
@@ -503,14 +512,14 @@ sys_readdir (void *argv[])
 }
 
 static bool
-sys_isdir (void *argv[])
+sys_isdir (void *argv[], void *esp UNUSED)
 {
   int fd = (int) argv[0];
   return false;
 }
 
 static int
-sys_inumber (void *argv[])
+sys_inumber (void *argv[], void *esp UNUSED)
 {
   int fd = (int) argv[0];
   return 0;

@@ -181,12 +181,19 @@ process_execute (const char *command)
   return tid;
 }
 
+/* Grow user stack if required. */
 bool
 grow_stack (const void *uaddr, const void *esp)
 {
-  /* Check for stack growth request. */
+  /* Check we are handling a user virtual address. */
+  if (is_kernel_vaddr (uaddr))
+    {
+      return false;
+    }
+
+  /* Check for stack growth request. */  
   int diff = esp - uaddr;
-  if (diff == 0 || diff == PUSHA_SIZE || diff == PUSH_SIZE)
+  if (uaddr >= esp || diff == PUSHA_SIZE || diff == PUSH_SIZE)
     {
       void *frame = get_frame (PAL_USER);
       if (frame != NULL)
