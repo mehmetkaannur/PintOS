@@ -25,8 +25,12 @@
 #include "vm/frame.h"
 #include "vm/page.h"
 
+/* Maximum stack size of 8MB.*/
+#define MAX_STACK_SIZE (1 << 23)
 #define WORD_SIZE 4
 #define NUM_ADDITIONAL_STACK_ADDRS 4
+#define PUSHA_SIZE 32
+#define PUSH_SIZE 4
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -109,7 +113,7 @@ process_execute (const char *command)
 
   /* Maximum possible arguments on stack occurs when each tokenised arg
      has 1 character and a null terminator (e.g. "a\0"). */
-  size_t max_allowed_args = (PGSIZE - stack_size) 
+  size_t max_allowed_args = (MAX_STACK_SIZE - stack_size) 
                            / (sizeof (char) * 2 + sizeof (char *));
 
   /* The number of arguments is limited by the maximum that will fit on the
@@ -175,6 +179,31 @@ process_execute (const char *command)
     }
   
   return tid;
+}
+
+bool
+grow_stack (const void *uaddr, const void *esp)
+{
+  /* Check for stack growth request. */
+  int diff = esp - uaddr;
+  if (diff == 0 || diff == PUSHA_SIZE || diff == PUSH_SIZE)
+    {
+      void *frame = get_frame (PAL_USER);
+      if (frame != NULL)
+        {
+          bool success = pagedir_set_page (thread_current ()->pagedir,
+                                           pg_round_down (uaddr),
+                                           frame,
+                                           true);
+          if (!success)
+            {
+              free_frame (frame);
+            }
+          return success;
+        }
+    }
+  return false;
+
 }
 
 /* Push argument ARG of size SIZE to stack given by ESP. */
