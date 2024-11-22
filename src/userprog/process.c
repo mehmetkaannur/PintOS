@@ -23,6 +23,7 @@
 #include "threads/malloc.h"
 #include "userprog/syscall.h"
 #include "vm/frame.h"
+#include "vm/page.h"
 
 #define WORD_SIZE 4
 #define NUM_ADDITIONAL_STACK_ADDRS 4
@@ -33,8 +34,6 @@ static void setup_stack_args (int argc, char *argv[], void **esp);
 static void child_info_destroy (struct hash_elem *e, void *aux UNUSED);
 static void push_to_stack (void *arg, char **esp, size_t size);
 static void push_string_to_stack (char *arg, char **esp);
-static void *get_user_frame (enum palloc_flags flags);
-static void free_user_frame (void *frame);
 
 /* Argument passing information for start_process. */
 struct process_args
@@ -69,54 +68,6 @@ child_info_destroy (struct hash_elem *e, void *aux UNUSED)
     {
       free (i);
     }
-}
-
-/* Get frame for user page. */
-static void *
-get_user_frame (enum palloc_flags flags)
-{
-  void *page = palloc_get_page (flags);
-  
-  struct frame_table_entry *fte = malloc (sizeof (struct frame_table_entry));
-  if (fte == NULL)
-    {
-      return NULL;
-    }
-
-  /* Set up frame table entry. */
-  fte->frame = page;
-  fte->owner = thread_current ();
-  list_init (&fte->page_table_entries);
-  
-  /* Insert frame table entry into table. 
-     (frame_table_lock will be released by install_page). */
-  lock_acquire (&frame_table_lock);
-  hash_insert (&frame_table, &fte->hash_elem);
-
-  return page;
-}
-
-/* Free frame for user page. */
-static void
-free_user_frame (void *page)
-{
-  palloc_free_page (page);
-
-  struct frame_table_entry i;
-  i.frame = pagedir_get_page (thread_current ()->pagedir, page);
-
-  lock_acquire (&frame_table_lock);
-
-  /* Find relevant frame table entry. */
-  struct hash_elem *e = hash_find (&frame_table, &i.hash_elem);
-  struct frame_table_entry *fte = hash_entry (e, struct frame_table_entry,
-                                              hash_elem);
-
-  /* Remove frame table entry from frame table. */
-  hash_delete (&frame_table, &fte->hash_elem);
-  free (fte);
-
-  lock_release (&frame_table_lock);
 }
 
 /* Destroys fd_file struct. Caller must hold the file_sys lock.  */
@@ -742,6 +693,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   lock_acquire (&filesys_lock);
   file_seek (file, ofs);
   lock_release (&filesys_lock);
+  uint32_t curr_ofs = ofs;
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -750,47 +702,32 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
       
-      /* Check if virtual page already allocated */
+      /* Set upage as unmapped. */
       struct thread *t = thread_current ();
-      uint8_t *kpage = pagedir_get_page (t->pagedir, upage);
+      pagedir_clear_page (t->pagedir, upage);
       
-      if (kpage == NULL){
-        
-        /* Get a new page of memory. */
-        kpage = get_user_frame (PAL_USER);
-        if (kpage == NULL){
+      /* Add entry for upage in supplemental page table. */
+      struct spt_entry *spte = malloc (sizeof (struct spt_entry));
+      if (spte == NULL)
+        {
           return false;
         }
-        
-        /* Add the page to the process's address space. */
-        if (!install_page (upage, kpage, writable)) 
-        {
-          free_user_frame (kpage);
-          return false; 
-        }     
-        
-      } else {
-        
-        /* Check if writable flag for the page should be updated */
-        if(writable && !pagedir_is_writable(t->pagedir, upage)){
-          pagedir_set_writable(t->pagedir, upage, writable); 
-        }
-        
-      }
 
-      /* Load data into the page. */
-      lock_acquire (&filesys_lock);
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes){
-        lock_release (&filesys_lock);
-        return false; 
-      }
-      lock_release (&filesys_lock);
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+      spte->user_page = upage;
+      spte->state = FILE_SYSTEM;
+      spte->file = file;
+      spte->file_ofs = curr_ofs; 
+      spte->page_read_bytes = page_read_bytes;
+      spte->page_zero_bytes = page_zero_bytes;
+      spte->writable = writable;
+
+      hash_insert (&t->supp_page_table, &spte->elem);
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+      curr_ofs += page_read_bytes;
     }
   return true;
 }
@@ -803,14 +740,14 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = get_user_frame (PAL_USER | PAL_ZERO);
+  kpage = get_frame (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
       else
-        free_user_frame (kpage);
+        free_frame (kpage);
     }
   return success;
 }
@@ -824,23 +761,11 @@ setup_stack (void **esp)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();
   
-  /* Find frame table entry for kpage frame. */
-  struct frame_table_entry i;
-  i.frame = kpage;
-  hash_find (&frame_table, &i.hash_elem);
-  struct frame_table_entry *fte = hash_entry (&i.hash_elem,
-                                              struct frame_table_entry,
-                                              hash_elem);
-
-  /* TODO: Insert relevant data about page table into frame table entry. */
-
-  lock_release (&frame_table_lock);
-
   /* Verify that there's not already a page at that virtual
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL

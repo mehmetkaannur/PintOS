@@ -1,9 +1,15 @@
 #include "userprog/exception.h"
 #include <inttypes.h>
 #include <stdio.h>
+#include <string.h>
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "userprog/pagedir.h"
+#include "userprog/syscall.h"
+#include "vm/page.h"
+#include "vm/frame.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -144,6 +150,66 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
+
+  /* Find relevant entry in supplemental page table. */
+  struct spt_entry entry;
+  entry.user_page = pg_round_down (fault_addr);
+  struct hash_elem *e = hash_find (&thread_current ()->supp_page_table,
+                                   &entry.elem);
+
+  if (e != NULL)
+    {
+      struct spt_entry *spte = hash_entry (e, struct spt_entry, elem);
+
+      /* Check for write to read-only page. */
+      if (!write || spte->writable) 
+        {
+          /* Obtain a frame to store the page. */
+          void *frame = get_frame (PAL_USER);
+
+          /* Fetch data into frame. */
+          if (spte->state == SWAPPED)
+            {
+              /* Swap in the page. */
+              PANIC ("Not implemented.");
+            }
+          else if (spte->state == FILE_SYSTEM)
+            {
+              /* Load the page from the file system. */
+              if (spte->page_read_bytes != 0)
+                {
+                 lock_acquire (&filesys_lock);
+                 file_seek (spte->file, spte->file_ofs);
+                 if (file_read (spte->file, frame, spte->page_read_bytes)
+                     != (int) spte->page_read_bytes)
+                   {
+                     free_frame (frame);
+                     lock_release (&filesys_lock);
+                     PANIC ("Failed to read file into frame.");
+                   }
+                 lock_release (&filesys_lock);
+                }
+
+              /* Zero required number of bytes in page.*/
+              memset (frame + spte->page_read_bytes, 0, spte->page_zero_bytes);
+            }
+
+          /* Point page table entry for faulting address to frame. */
+          bool success = pagedir_set_page (thread_current ()->pagedir,
+                                           spte->user_page,
+                                           frame,
+                                           spte->writable);
+          if (!success)
+            {
+              free_frame (frame);
+            }
+
+          /* Remove supplemental page table entry. */
+          hash_delete (&thread_current ()->supp_page_table, &spte->elem);
+
+          return;
+        }
+    }
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to

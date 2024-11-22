@@ -15,10 +15,11 @@
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "threads/fixed-point.h"
-#include "userprog/syscall.h"
 #ifdef USERPROG
+#include "userprog/syscall.h"
 #include "userprog/process.h"
 #endif
+#include "vm/page.h"
 
 /* First free FD (after STDIN_FD and STDOUT_FD) when
    initialising fd_hash_map. */
@@ -456,6 +457,15 @@ thread_create (const char *name, int priority,
       thread_exit ();
     }
   t->next_fd = INITIAL_NEXT_FD;
+
+  /* Set up supplemental page table. */
+  bool supp_page_table_success = hash_init (&t->supp_page_table,
+                                            hash_spt, less_spt, NULL);
+                                      
+  if (!supp_page_table_success)
+    {
+      thread_exit ();
+    }
 
 #endif
 
