@@ -740,24 +740,38 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       
       /* Set upage as unmapped. */
       struct thread *t = thread_current ();
-      pagedir_clear_page (t->pagedir, upage);
       
-      /* Add entry for upage in supplemental page table. */
-      struct spt_entry *spte = malloc (sizeof (struct spt_entry));
-      if (spte == NULL)
+      struct spt_entry entry;
+      entry.user_page = upage;
+      struct hash_elem *e = hash_find (&t->supp_page_table, &entry.elem);
+
+      if (e == NULL && !pagedir_get_page (t->pagedir, upage))
         {
-          return false;
+          /* Add entry for upage in supplemental page table. */
+          struct spt_entry *spte = malloc (sizeof (struct spt_entry));
+          if (spte == NULL)
+            {
+              return false;
+            }
+
+          spte->user_page = upage;
+          spte->state = FILE_SYSTEM;
+          spte->file = file;
+          spte->file_ofs = curr_ofs; 
+          spte->page_read_bytes = page_read_bytes;
+          spte->page_zero_bytes = page_zero_bytes;
+          spte->writable = writable;
+
+          hash_insert (&t->supp_page_table, &spte->elem);
         }
-
-      spte->user_page = upage;
-      spte->state = FILE_SYSTEM;
-      spte->file = file;
-      spte->file_ofs = curr_ofs; 
-      spte->page_read_bytes = page_read_bytes;
-      spte->page_zero_bytes = page_zero_bytes;
-      spte->writable = writable;
-
-      hash_insert (&t->supp_page_table, &spte->elem);
+      else
+        {
+          struct spt_entry *spte = hash_entry (e, struct spt_entry, elem);
+          if (writable && !spte->writable)
+            {
+              spte->writable = true;
+            }
+        }
 
       /* Advance. */
       read_bytes -= page_read_bytes;
