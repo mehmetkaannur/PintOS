@@ -397,6 +397,9 @@ process_exit (void)
       lock_release (&filesys_lock);
       cur->executable = NULL;
     }
+
+  /* Free all supplemental page table entries and associated resources. */
+  hash_destroy (&cur->supp_page_table, destroy_spte);
 }
 
 /* Sets up the CPU for running user code in the current

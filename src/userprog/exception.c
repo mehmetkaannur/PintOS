@@ -203,9 +203,12 @@ page_fault (struct intr_frame *f)
             {
               free_frame (frame);
             }
-
-          /* Remove supplemental page table entry. */
-          hash_delete (&thread_current ()->supp_page_table, &spte->elem);
+          else
+            {
+              /* Update supplemental page table entry. */
+              spte->state = IN_MEMORY;
+              spte->kpage = frame;
+            }
 
           return;
         }

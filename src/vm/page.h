@@ -3,6 +3,7 @@
 /* Possible states of a page not in memory, recorded in SPT. */
 enum page_state
   {
+    IN_MEMORY,                    /* Page is in memory. */
     SWAPPED,                      /* Page is swapped out. */
     FILE_SYSTEM,                  /* Page is in file system. */
   };
@@ -19,7 +20,9 @@ struct spt_entry
     uint32_t file_ofs;            /* Offset in file to read data from. */
     uint32_t page_read_bytes;     /* Number of bytes to read from file. */
     uint32_t page_zero_bytes;     /* Number of bytes to zero in page. */
+    void *kpage;                  /* Kernel virtual page if in memory. */
   };
 
-hash_hash_func hash_spt;
-hash_less_func less_spt;
+hash_hash_func hash_spte;
+hash_less_func less_spte;
+hash_action_func destroy_spte;
