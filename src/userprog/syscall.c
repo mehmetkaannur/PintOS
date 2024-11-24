@@ -14,6 +14,7 @@
 #include "devices/input.h"
 #include "filesys/filesys.h"
 #include "devices/shutdown.h"
+#include "vm/page.h"
 
 #define CONSOLE_BUFFER_SIZE 100
 #define SYS_ERROR -1
@@ -164,7 +165,7 @@ check_overlap(void *addr, size_t length)
 }
 
 /*  */
-static void
+void
 do_munmap(struct mmap_file *mmap_file)
 {
     void *addr = mmap_file->addr;

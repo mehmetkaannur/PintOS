@@ -1,5 +1,7 @@
 #include <debug.h>
 #include "vm/page.h"
+#include "filesys/file.h"
+#include "threads/thread.h"
 
 unsigned
 hash_spt (const struct hash_elem *e, void *aux UNUSED)
@@ -54,7 +56,6 @@ get_page_from_spt(void *upage)
     return NULL;
 }
 
-void
 void
 remove_page_from_spt(void *upage)
 {
