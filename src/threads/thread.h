@@ -121,9 +121,21 @@ struct thread
     struct hash supp_page_table;        /* Supplemental page table. */
 #endif
 
+   mapid_t next_mapid;                 /* Map ID for mmap mappings */
+   struct list mmap_list;              /* List of memory-mapped files */
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
+
+/* Represents a memory-mapped file */
+struct mmap_file {
+    mapid_t mapid;                /* Mapping ID */
+    struct file *file;            /* File being mapped */
+    void *addr;                   /* Start address of the mapping */
+    size_t length;                /* Length of the mapping */
+    struct list_elem elem;        /* List element for thread's mmap_list */
+};
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

@@ -157,6 +157,7 @@ page_fault (struct intr_frame *f)
   struct hash_elem *e = hash_find (&thread_current ()->supp_page_table,
                                    &entry.elem);
 
+  /* If the page is in the supplemental page table */
   if (e != NULL)
     {
       struct spt_entry *spte = hash_entry (e, struct spt_entry, elem);
@@ -166,6 +167,11 @@ page_fault (struct intr_frame *f)
         {
           /* Obtain a frame to store the page. */
           void *frame = get_frame (PAL_USER);
+          if (frame == NULL)
+            {
+              // TODO: handle frame allocation failure (e.g., eviction).
+              PANIC ("Failed to obtain frame.");
+            }
 
           /* Fetch data into frame. */
           if (spte->state == SWAPPED)
@@ -173,7 +179,7 @@ page_fault (struct intr_frame *f)
               /* Swap in the page. */
               PANIC ("Not implemented.");
             }
-          else if (spte->state == FILE_SYSTEM)
+          else if (spte->state == FILE_SYSTEM || spte->state == MMAP_FILE)
             {
               /* Load the page from the file system. */
               if (spte->page_read_bytes != 0)
@@ -195,14 +201,14 @@ page_fault (struct intr_frame *f)
             }
 
           /* Point page table entry for faulting address to frame. */
-          bool success = pagedir_set_page (thread_current ()->pagedir,
-                                           spte->user_page,
-                                           frame,
-                                           spte->writable);
+          bool success = install_page (spte->user_page, frame, spte->writable);
           if (!success)
             {
               free_frame (frame);
             }
+
+          /* Set the page as loaded. */
+          spte->loaded = true;
 
           /* Remove supplemental page table entry. */
           hash_delete (&thread_current ()->supp_page_table, &spte->elem);
@@ -221,4 +227,3 @@ page_fault (struct intr_frame *f)
           user ? "user" : "kernel");
   kill (f);
 }
-

@@ -18,6 +18,7 @@
 #define CONSOLE_BUFFER_SIZE 100
 #define SYS_ERROR -1
 #define WORD_SIZE 4
+#define STACK_MAX (8 * 1024 * 1024)  // 8 MB
 
 /* Functions to handle syscalls. */
 static void sys_halt (void *argv[] UNUSED);
@@ -142,6 +143,64 @@ get_file_from_fd (int fd)
     }
 
   return hash_entry (e, struct fd_file, hash_elem)->file;
+}
+
+/* Check if the new mapping overlaps existing mappings in virtual address space. */
+static bool
+check_overlap(void *addr, size_t length)
+{
+    struct thread *t = thread_current();
+    void *upage = addr;
+    size_t size = length;
+
+    while (size > 0) {
+        if (pagedir_get_page(t->pagedir, upage) != NULL) {
+            return true; // Overlaps with existing mapping
+        }
+        upage += PGSIZE;
+        size -= size < PGSIZE ? size : PGSIZE;
+    }
+    return false;
+}
+
+/*  */
+static void
+do_munmap(struct mmap_file *mmap_file)
+{
+    void *addr = mmap_file->addr;
+    size_t length = mmap_file->length;
+    struct file *file = mmap_file->file;
+    size_t offset = 0;
+
+    while (length > 0) {
+        size_t page_read_bytes = length < PGSIZE ? length : PGSIZE;
+        void *upage = addr + offset;
+
+        // If the page is in memory
+        struct spt_entry *spte = get_page_from_spt(upage);
+        if (spte != NULL && spte->loaded) {
+            if (pagedir_is_dirty(thread_current()->pagedir, upage)) {
+                // Write back to file
+                lock_acquire(&filesys_lock);
+                file_write_at(file, upage, page_read_bytes, spte->file_ofs);
+                lock_release(&filesys_lock);
+            }
+            // Remove page from page table
+            pagedir_clear_page(thread_current()->pagedir, upage);
+            // Free the frame
+            free_frame(pagedir_get_page(thread_current()->pagedir, upage));
+            // Remove from SPT
+            remove_page_from_spt(upage);
+        }
+
+        offset += PGSIZE;
+        length -= page_read_bytes;
+    }
+
+    // Close the file
+    lock_acquire(&filesys_lock);
+    file_close(file);
+    lock_release(&filesys_lock);
 }
 
 void
@@ -471,13 +530,115 @@ sys_mmap (void *argv[])
 {
   int fd = (int) argv[0];
   void *addr = argv[1];
-  return 0;
+
+  // Validate addr
+    if (addr == NULL || addr == 0 || pg_ofs(addr) != 0) {
+        return -1;
+    }
+
+    // Validate fd
+    if (fd <= STDOUT_FILENO) { // 0 and 1 are stdin and stdout
+        return -1;
+    }
+
+    // Get file from fd
+    struct file *file = get_file_from_fd(fd);
+    if (file == NULL) {
+        return -1;
+    }
+
+    // Reopen the file to have a separate reference
+    file = file_reopen(file);
+    if (file == NULL) {
+        return -1;
+    }
+
+    // Get file length
+    lock_acquire(&filesys_lock);
+    size_t length = file_length(file);
+    lock_release(&filesys_lock);
+
+    if (length == 0) {
+        file_close(file);
+        return -1;
+    }
+
+    // Check that addr is in user space and not overlapping existing mappings
+    if (!is_user_vaddr(addr) || !is_user_vaddr(addr + length)) {
+        file_close(file);
+        return -1;
+    }
+
+    // Check for overlapping mappings or stack
+    if (addr < PHYS_BASE - STACK_MAX && addr + length >= PHYS_BASE - STACK_MAX) {
+        // Overlaps with stack
+        file_close(file);
+        return -1;
+    }
+
+    // Check that the mapping does not overlap any existing mappings
+    if (check_overlap(addr, length)) {
+        file_close(file);
+        return -1;
+    }
+
+    // Create a new mmap_file structure
+    struct mmap_file *mmap_file = malloc(sizeof(struct mmap_file));
+    if (mmap_file == NULL) {
+        file_close(file);
+        return -1;
+    }
+
+    struct thread *t = thread_current();
+
+    mmap_file->file = file;
+    mmap_file->addr = addr;
+    mmap_file->length = length;
+    mmap_file->mapid = t->next_mapid++;
+
+    list_push_back(&t->mmap_list, &mmap_file->elem);
+
+    // Add entries to the supplemental page table
+    size_t offset = 0;
+    while (length > 0) {
+        size_t read_bytes = length < PGSIZE ? length : PGSIZE;
+        size_t zero_bytes = PGSIZE - read_bytes;
+
+        void *upage = addr + offset;
+
+        if (!add_mmap_spt_entry(upage, mmap_file, offset, read_bytes, zero_bytes)) {
+            // Handle failure: clean up
+            sys_munmap((void *[]){ (void *) mmap_file->mapid });
+            return -1;
+        }
+
+        offset += PGSIZE;
+        length -= read_bytes;
+    }
+
+    return mmap_file->mapid;
 }
 
 static void
 sys_munmap (void *argv[])
 {
-  int mapid = (int) argv[0];
+  mapid_t mapid = (mapid_t) argv[0];
+  struct thread *t = thread_current();
+  struct list_elem *e;
+
+  for (e = list_begin (&t->mmap_list); 
+       e != list_end (&t->mmap_list); 
+       e = list_next (e)) 
+    {
+      struct mmap_file *mmap_file = list_entry (e, struct mmap_file, elem);
+      if (mmap_file->mapid == mapid) 
+        {
+          do_munmap (mmap_file);
+          list_remove (e);
+          free (mmap_file);
+          return;
+        }
+    }
 }
 
 static bool
