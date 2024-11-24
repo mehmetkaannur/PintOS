@@ -1,4 +1,8 @@
+#ifndef VM_PAGE_H
+#define VM_PAGE_H
+
 #include <hash.h>
+#include "filesys/off_t.h"
 
 /* Possible states of a page not in memory, recorded in SPT. */
 enum page_state
@@ -30,3 +34,8 @@ struct spt_entry
 
 hash_hash_func hash_spt;
 hash_less_func less_spt;
+bool add_mmap_spt_entry(void *upage, struct mmap_file *mmap_file, off_t offset, size_t read_bytes, size_t zero_bytes);
+struct spt_entry * get_page_from_spt(void *upage);
+void remove_page_from_spt(void *upage);
+
+#endif /* vm/page.h */

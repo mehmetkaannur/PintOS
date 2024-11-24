@@ -2,6 +2,7 @@
 #include "vm/page.h"
 #include "filesys/file.h"
 #include "threads/thread.h"
+#include "threads/malloc.h"
 
 unsigned
 hash_spt (const struct hash_elem *e, void *aux UNUSED)

@@ -1,3 +1,6 @@
+#ifndef VM_FRAME_H
+#define VM_FRAME_H
+
 #include <hash.h>
 #include "threads/palloc.h"
 
@@ -18,3 +21,5 @@ extern struct lock frame_table_lock;
 
 void *get_frame (enum palloc_flags flags);
 void free_frame (void *frame);
+
+#endif /* vm/frame.h */
