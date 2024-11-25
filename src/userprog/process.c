@@ -191,6 +191,12 @@ grow_stack (const void *uaddr, const void *esp)
       return false;
     }
 
+  /* Check for stack that is too large. */
+  if (uaddr < PHYS_BASE - MAX_STACK_SIZE)
+    {
+      return false;
+    }
+
   /* Check for stack growth request. */  
   int diff = esp - uaddr;
   if (uaddr >= esp || diff == PUSHA_SIZE || diff == PUSH_SIZE)
