@@ -94,8 +94,10 @@ validate_user_pointer (const void *uaddr, void *esp)
       thread_exit ();
     }
   
+  /* Check if uaddr is unmapped virtual memory. */
   if (pagedir_get_page (t->pagedir, uaddr) == NULL)
     {
+      /* Try to load page in. */
       if (!get_page (uaddr, esp, false))
         {
           thread_exit ();

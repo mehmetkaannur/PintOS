@@ -121,69 +121,64 @@ get_page (void *fault_addr, void *esp, bool write)
   struct hash_elem *e = hash_find (&thread_current ()->supp_page_table,
                                    &entry.elem);
 
-  if (e != NULL)
+  /* Grow stack if necessary. */
+  if (e == NULL)
     {
-      struct spt_entry *spte = hash_entry (e, struct spt_entry, elem);
+      return grow_stack (fault_addr, esp);
+    }
 
-      /* Check for write to read-only page. */
-      if (!write || spte->writable) 
+  struct spt_entry *spte = hash_entry (e, struct spt_entry, elem);
+
+  /* Check for write to read-only page. */
+  if (write && !spte->writable) 
+    {
+      return false;
+    }
+
+  /* Obtain a frame to store the page. */
+  void *frame = get_frame (PAL_USER);
+
+  /* Fetch data into frame. */
+  if (spte->state == SWAPPED)
+    {
+      /* Swap in the page. */
+      PANIC ("Not implemented.");
+    }
+  else if (spte->state == FILE_SYSTEM)
+    {
+      /* Load the page from the file system. */
+      if (spte->page_read_bytes != 0)
         {
-          /* Obtain a frame to store the page. */
-          void *frame = get_frame (PAL_USER);
-
-          /* Fetch data into frame. */
-          if (spte->state == SWAPPED)
-            {
-              /* Swap in the page. */
-              PANIC ("Not implemented.");
-            }
-          else if (spte->state == FILE_SYSTEM)
-            {
-              /* Load the page from the file system. */
-              if (spte->page_read_bytes != 0)
-                {
-                 lock_acquire (&filesys_lock);
-                 file_seek (spte->file, spte->file_ofs);
-                 if (file_read (spte->file, frame, spte->page_read_bytes)
-                     != (int) spte->page_read_bytes)
-                   {
-                     free_frame (frame);
-                     lock_release (&filesys_lock);
-                     PANIC ("Failed to read file into frame.");
-                   }
-                 lock_release (&filesys_lock);
-                }
-
-              /* Zero required number of bytes in page.*/
-              memset (frame + spte->page_read_bytes, 0, spte->page_zero_bytes);
-            }
-
-          /* Point page table entry for faulting address to frame. */
-          bool success = pagedir_set_page (thread_current ()->pagedir,
-                                           spte->user_page,
-                                           frame,
-                                           spte->writable);
-          if (!success)
+          lock_acquire (&filesys_lock);
+          file_seek (spte->file, spte->file_ofs);
+          if (file_read (spte->file, frame, spte->page_read_bytes)
+              != (int) spte->page_read_bytes)
             {
               free_frame (frame);
+              lock_release (&filesys_lock);
+              PANIC ("Failed to read file into frame.");
             }
-
-          /* Remove supplemental page table entry. */
-          hash_delete (&thread_current ()->supp_page_table, &spte->elem);
-
-          return true;
+          lock_release (&filesys_lock);
         }
+
+      /* Zero required number of bytes in page.*/
+      memset (frame + spte->page_read_bytes, 0, spte->page_zero_bytes);
     }
-  else 
-   {
-      bool stack_grew = grow_stack (fault_addr, esp);
-      if (stack_grew)
-        {
-          return true;
-        }
-   }
 
-  return false;
+  /* Point page table entry for faulting address to frame. */
+  bool success = pagedir_set_page (thread_current ()->pagedir,
+                                   spte->user_page,
+                                   frame,
+                                   spte->writable);
+  if (!success)
+    {
+      free_frame (frame);
+    }
+
+  /* Remove supplemental page table entry. */
+  hash_delete (&thread_current ()->supp_page_table, &spte->elem);
+
+  return success;
 }
 
 /* Page fault handler.  This is a skeleton that must be filled in
