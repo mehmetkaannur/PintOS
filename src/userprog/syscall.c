@@ -15,6 +15,7 @@
 #include "filesys/filesys.h"
 #include "devices/shutdown.h"
 #include "vm/page.h"
+#include "vm/frame.h"
 
 #define CONSOLE_BUFFER_SIZE 100
 #define SYS_ERROR -1

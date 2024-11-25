@@ -4,8 +4,10 @@
 #include "hash.h"
 #include "threads/synch.h"
 #include "filesys/file.h"
+#include "threads/thread.h"
 
 void syscall_init (void);
+void do_munmap (struct mmap_file *mmap_file);
 
 /* File with file descriptor (fd). */
 struct fd_file
