@@ -555,31 +555,31 @@ sys_mmap (void *argv[])
     }
 
     // Get file length
-    lock_acquire(&filesys_lock);
-    size_t length = file_length(file);
-    lock_release(&filesys_lock);
+    lock_acquire (&filesys_lock);
+    size_t length = file_length (file);
+    lock_release (&filesys_lock);
 
     if (length == 0) {
-        file_close(file);
+        file_close (file);
         return -1;
     }
 
     // Check that addr is in user space and not overlapping existing mappings
     if (!is_user_vaddr(addr) || !is_user_vaddr(addr + length)) {
-        file_close(file);
+        file_close (file);
         return -1;
     }
 
     // Check for overlapping mappings or stack
     if (addr < PHYS_BASE - STACK_MAX && addr + length >= PHYS_BASE - STACK_MAX) {
         // Overlaps with stack
-        file_close(file);
+        file_close (file);
         return -1;
     }
 
     // Check that the mapping does not overlap any existing mappings
-    if (check_overlap(addr, length)) {
-        file_close(file);
+    if (check_overlap (addr, length)) {
+        file_close (file);
         return -1;
     }
 
@@ -597,7 +597,7 @@ sys_mmap (void *argv[])
     mmap_file->length = length;
     mmap_file->mapid = t->next_mapid++;
 
-    list_push_back(&t->mmap_list, &mmap_file->elem);
+    hash_insert (&t->mmap_table, &mmap_file->elem);
 
     // Add entries to the supplemental page table
     size_t offset = 0;
@@ -624,22 +624,20 @@ static void
 sys_munmap (void *argv[])
 {
   mapid_t mapid = (mapid_t) argv[0];
-  struct thread *t = thread_current();
-  struct list_elem *e;
+  struct thread *t = thread_current ();
 
-  for (e = list_begin (&t->mmap_list); 
-       e != list_end (&t->mmap_list); 
-       e = list_next (e)) 
-    {
-      struct mmap_file *mmap_file = list_entry (e, struct mmap_file, elem);
-      if (mmap_file->mapid == mapid) 
-        {
-          do_munmap (mmap_file);
-          list_remove (e);
-          free (mmap_file);
-          return;
-        }
-    }
+  struct mmap_file temp;
+  temp.mapid = mapid;
+  struct hash_elem *e = hash_find (&t->mmap_table, &temp.elem);
+  if (e == NULL) {
+      return;
+  }
+
+  struct mmap_file *mmap_file = hash_entry (e, struct mmap_file, elem);
+
+  /* Unmap the file and remove it from the hash table. */
+  do_munmap (mmap_file);
+  hash_delete (&t->mmap_table, &mmap_file->elem);
 }
 
 static bool

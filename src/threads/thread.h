@@ -120,10 +120,10 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
     struct file *executable;            /* The executable file of the process */
     struct hash supp_page_table;        /* Supplemental page table. */
+    struct hash mmap_table;             /* Hash table for memory-mapped files. */
 #endif
 
-   mapid_t next_mapid;                 /* Map ID for mmap mappings */
-   struct list mmap_list;              /* List of memory-mapped files */
+    mapid_t next_mapid;                 /* Next available map ID. */
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
@@ -135,7 +135,7 @@ struct mmap_file {
     struct file *file;            /* File being mapped */
     void *addr;                   /* Start address of the mapping */
     size_t length;                /* Length of the mapping */
-    struct list_elem elem;        /* List element for thread's mmap_list */
+    struct hash_elem elem;      /* Hash element for process's mmap hash table. */
 };
 
 /* If false (default), use round-robin scheduler.

@@ -364,16 +364,15 @@ process_exit (void)
      to children of this thread. */
   hash_destroy (&cur->children_map, child_info_destroy);
 
-  /* Unmap all memory-mapped files in this thread. */
-  struct list_elem *e, *next;
-  for (e = list_begin (&cur->mmap_list); e != list_end (&cur->mmap_list); e = next)
-    {
-      next = list_next (e);
-      struct mmap_file *mmap_file = list_entry (e, struct mmap_file, elem);
-      do_munmap (mmap_file);
-      list_remove (e);
-      free (mmap_file);
+  /* Unmap all memory-mapped files. */
+    struct hash_iterator i;
+    hash_first (&i, &cur->mmap_table);
+    while (hash_next (&i)) {
+        struct mmap_file *mmap_file = hash_entry (hash_cur (&i), struct mmap_file, elem);
+        do_munmap (mmap_file);
     }
+
+    hash_destroy (&cur->mmap_table, NULL);
 
   /* Destroy this thread's fd_file_map and all fd_file structs related
      to the open files of this thread. */
