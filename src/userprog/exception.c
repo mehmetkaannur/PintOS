@@ -202,7 +202,10 @@ page_fault (struct intr_frame *f)
             }
 
           /* Point page table entry for faulting address to frame. */
-          bool success = install_page (spte->user_page, frame, spte->writable);
+          bool success = pagedir_set_page (thread_current ()->pagedir,
+                                           spte->user_page,
+                                           frame,
+                                           spte->writable);
           if (!success)
             {
               free_frame (frame);

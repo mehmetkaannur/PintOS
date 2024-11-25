@@ -365,14 +365,15 @@ process_exit (void)
   hash_destroy (&cur->children_map, child_info_destroy);
 
   /* Unmap all memory-mapped files. */
-    struct hash_iterator i;
-    hash_first (&i, &cur->mmap_table);
-    while (hash_next (&i)) {
-        struct mmap_file *mmap_file = hash_entry (hash_cur (&i), struct mmap_file, elem);
-        do_munmap (mmap_file);
+  struct hash_iterator i;
+  hash_first (&i, &cur->mmap_table);
+  while (hash_next (&i)) 
+    {
+      struct mmap_file *mmap_file = hash_entry (hash_cur (&i), struct mmap_file, elem);
+      do_munmap (mmap_file);
     }
 
-    hash_destroy (&cur->mmap_table, NULL);
+  hash_destroy (&cur->mmap_table, NULL);
 
   /* Destroy this thread's fd_file_map and all fd_file structs related
      to the open files of this thread. */

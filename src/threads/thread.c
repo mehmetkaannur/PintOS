@@ -118,17 +118,21 @@ hash_less (const struct hash_elem *a, const struct hash_elem *b,
   return fa->fd < fb->fd;
 }
 
+/* Hash function for memory mapped files. */
 static unsigned
-mmap_file_hash (const struct hash_elem *e, void *aux UNUSED) {
-    const struct mmap_file *mmap_file = hash_entry(e, struct mmap_file, elem);
-    return hash_bytes(&mmap_file->mapid, sizeof mmap_file->mapid);
+mmap_file_hash (const struct hash_elem *e, void *aux UNUSED) 
+{
+  const struct mmap_file *mmap_file = hash_entry (e, struct mmap_file, elem);
+  return hash_bytes (&mmap_file->mapid, sizeof mmap_file->mapid);
 }
 
+/* Comparison function for memory mapped files. */
 static bool
-mmap_file_less (const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED) {
-    const struct mmap_file *mmap_a = hash_entry(a, struct mmap_file, elem);
-    const struct mmap_file *mmap_b = hash_entry(b, struct mmap_file, elem);
-    return mmap_a->mapid < mmap_b->mapid;
+mmap_file_less (const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED) 
+{
+  const struct mmap_file *mmap_a = hash_entry (a, struct mmap_file, elem);
+  const struct mmap_file *mmap_b = hash_entry (b, struct mmap_file, elem);
+  return mmap_a->mapid < mmap_b->mapid;
 }
 
 /* Hash function for child_info struct. */

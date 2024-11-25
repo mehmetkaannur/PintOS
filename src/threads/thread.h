@@ -135,7 +135,7 @@ struct mmap_file {
     struct file *file;            /* File being mapped */
     void *addr;                   /* Start address of the mapping */
     size_t length;                /* Length of the mapping */
-    struct hash_elem elem;      /* Hash element for process's mmap hash table. */
+    struct hash_elem elem;        /* Hash element for process's mmap hash table. */
 };
 
 /* If false (default), use round-robin scheduler.
