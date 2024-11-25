@@ -84,21 +84,22 @@ static struct syscall_info syscall_table[] = {
 /* Checks if the pointer given by the user is a valid pointer
    and terminates user process if not. */
 static void
-validate_user_pointer (const void *uaddr, void *esp UNUSED)
+validate_user_pointer (const void *uaddr, void *esp)
 {
   struct thread *t = thread_current ();
   
   /* Check for invalid uaddr. */
-  if (!is_user_vaddr (uaddr) || pagedir_get_page (t->pagedir, uaddr) == NULL)
+  if (!is_user_vaddr (uaddr))
     {
-  
-      /* Grow user stack if necessary. */
-      if (grow_stack (uaddr, esp))
-        {
-          return;
-        }
-      
       thread_exit ();
+    }
+  
+  if (pagedir_get_page (t->pagedir, uaddr) == NULL)
+    {
+      if (!get_page (uaddr, esp, false))
+        {
+          thread_exit ();
+        }
     }
 }
 
