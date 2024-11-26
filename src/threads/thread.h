@@ -5,8 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 #include "hash.h"
-#include <user/syscall.h>
 
+typedef int mapid_t;
 typedef int32_t fixed_point_t;
 
 /* States in a thread's life cycle. */
@@ -121,9 +121,8 @@ struct thread
     struct file *executable;            /* The executable file of the process */
     struct hash supp_page_table;        /* Supplemental page table. */
     struct hash mmap_table;             /* Hash table for memory-mapped files. */
-#endif
-
     mapid_t next_mapid;                 /* Next available map ID. */
+#endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
