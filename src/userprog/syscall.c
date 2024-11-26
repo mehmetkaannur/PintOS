@@ -619,7 +619,6 @@ sys_mmap (void *argv[], void *esp)
       spte->file_ofs = offset;
       spte->page_read_bytes = read_bytes;
       spte->page_zero_bytes = zero_bytes;
-      spte->is_mmap = true;
       spte->mmap_file = mmap_file;
       spte->loaded = false;
 
