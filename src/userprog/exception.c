@@ -177,9 +177,6 @@ get_page (const void *fault_addr, const void *esp, bool write)
     }
   else
     {
-      /* Set the page as loaded. */
-      spte->loaded = true;
-
       /* Update supplemental page table entry. */
       spte->in_memory = true;
       spte->kpage = frame;

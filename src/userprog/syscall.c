@@ -196,7 +196,7 @@ do_munmap (struct mmap_file *mmap_file)
 
       /* If the page is in memory */
       struct spt_entry *spte = get_page_from_spt (upage);
-      if (spte != NULL && spte->loaded) 
+      if (spte != NULL && spte->in_memory) 
         {
           if (pagedir_is_dirty (thread_current ()->pagedir, upage)) 
             {
@@ -620,7 +620,7 @@ sys_mmap (void *argv[], void *esp)
       spte->page_read_bytes = read_bytes;
       spte->page_zero_bytes = zero_bytes;
       spte->mmap_file = mmap_file;
-      spte->loaded = false;
+      spte->in_memory = false;
 
       hash_insert (&t->supp_page_table, &spte->elem);
 

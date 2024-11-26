@@ -26,8 +26,6 @@ struct spt_entry
     uint32_t page_read_bytes;     /* Number of bytes to read from file. */
     uint32_t page_zero_bytes;     /* Number of bytes to zero in page. */
     struct mmap_file *mmap_file;  /* Pointer to the mmap_file structure. */
-
-    bool loaded;                  /* True if the page is loaded into memory. */
     void *kpage;                  /* Kernel virtual page if in memory. */
   };
 
