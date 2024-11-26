@@ -5,6 +5,9 @@
 #include "threads/init.h"
 #include "threads/pte.h"
 #include "threads/palloc.h"
+#include "threads/synch.h"
+#include "threads/malloc.h"
+#include "vm/frame.h"
 
 static uint32_t *active_pd (void);
 static void invalidate_pagedir (uint32_t *);
@@ -112,6 +115,24 @@ pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
     {
       ASSERT ((*pte & PTE_P) == 0);
       *pte = pte_create_user (kpage, writable);
+      
+      /* Mark upage as referring to kpage in frame table. */
+      struct frame_reference *fr = malloc (sizeof *fr);
+      if (fr == NULL)
+        return false;
+      fr->pd = pd;
+      fr->upage = upage;
+      
+      /* Update frame references list for frame in frame table. */
+      lock_acquire (&frame_table_lock);
+      struct frame_table_entry i;
+      i.frame = kpage;
+      struct hash_elem *e = hash_find (&frame_table, &i.hash_elem);
+      struct frame_table_entry *fte = hash_entry (e, struct frame_table_entry,
+                                                  hash_elem);
+      list_push_back (&fte->frame_references, &fr->elem);
+      lock_release (&frame_table_lock);
+
       return true;
     }
   else

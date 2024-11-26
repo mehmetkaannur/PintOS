@@ -14,11 +14,12 @@ struct lock frame_table_lock;
 static hash_hash_func hash_frame_table_entry;
 static hash_less_func less_frame_table_entry;
 
-/* Get frame for user page. */
+/* Get a single free frame for user page.
+   Returns the kernel virtual address of this frame. */
 void *
 get_frame (enum palloc_flags flags)
 {
-  void *page = palloc_get_page (flags);
+  void *kpage = palloc_get_page (flags);
   
   struct frame_table_entry *fte = malloc (sizeof (struct frame_table_entry));
   if (fte == NULL)
@@ -27,9 +28,8 @@ get_frame (enum palloc_flags flags)
     }
 
   /* Set up frame table entry. */
-  fte->frame = page;
-  fte->owner = thread_current ();
-  list_init (&fte->page_table_entries);
+  fte->frame = kpage;
+  list_init (&fte->frame_references);
   
   /* Insert frame table entry into table. 
      (frame_table_lock will be released by install_page). */
@@ -37,17 +37,17 @@ get_frame (enum palloc_flags flags)
   hash_insert (&frame_table, &fte->hash_elem);
   lock_release (&frame_table_lock);
 
-  return page;
+  return kpage;
 }
 
-/* Free frame for user page. */
+/* Free frame containing user page with kernel virtual address KPAGE. */
 void
-free_frame (void *page)
+free_frame (void *kpage)
 {
-  palloc_free_page (page);
+  palloc_free_page (kpage);
 
   struct frame_table_entry i;
-  i.frame = pagedir_get_page (thread_current ()->pagedir, page);
+  i.frame = kpage;
 
   lock_acquire (&frame_table_lock);
 
@@ -55,6 +55,17 @@ free_frame (void *page)
   struct hash_elem *e = hash_find (&frame_table, &i.hash_elem);
   struct frame_table_entry *fte = hash_entry (e, struct frame_table_entry,
                                               hash_elem);
+
+  /* Remove all references to this frame. */
+  struct list_elem *el = list_begin (&fte->frame_references);
+  while (el != list_end (&fte->frame_references))
+    {
+      struct frame_reference *fr = list_entry (el, struct frame_reference,
+                                               elem);
+      pagedir_clear_page (fr->pd, fr->upage);
+      el = list_remove (el);
+      free (fr);
+    }
 
   /* Remove frame table entry from frame table. */
   hash_delete (&frame_table, &fte->hash_elem);
@@ -71,7 +82,7 @@ hash_frame_table_entry (const struct hash_elem *e, void *aux UNUSED)
                                                     struct frame_table_entry,
                                                     hash_elem);
 
-  return hash_ptr (&fte->frame);
+  return hash_ptr (fte->frame);
 }
 
 /* Less function for frame table. */

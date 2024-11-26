@@ -43,6 +43,8 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
                          spte->file_ofs);
           lock_release (&filesys_lock);
         }
+
+      free_frame (spte->kpage);
     }
   else if (spte->evict_to == SWAP_SPACE)
     {
