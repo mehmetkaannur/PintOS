@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "hash.h"
 
+typedef int mapid_t;
 typedef int32_t fixed_point_t;
 
 /* States in a thread's life cycle. */
@@ -119,6 +120,8 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
     struct file *executable;            /* The executable file of the process */
     struct hash supp_page_table;        /* Supplemental page table. */
+    struct hash mmap_table;             /* Hash table for memory-mapped files. */
+    mapid_t next_mapid;                 /* Next available map ID. */
 #endif
 
     /* Owned by thread.c. */

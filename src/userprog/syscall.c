@@ -11,13 +11,17 @@
 #include "threads/malloc.h"
 #include "filesys/file.h"
 #include "userprog/process.h"
+#include "userprog/exception.h"
 #include "devices/input.h"
 #include "filesys/filesys.h"
 #include "devices/shutdown.h"
+#include "vm/page.h"
+#include "vm/frame.h"
 
 #define CONSOLE_BUFFER_SIZE 100
 #define SYS_ERROR -1
 #define WORD_SIZE 4
+#define STACK_MAX (8 * 1024 * 1024)  // 8 MB
 
 /* Functions to handle syscalls. */
 static void sys_halt (void *argv[] UNUSED, void *esp UNUSED);
@@ -154,6 +158,69 @@ get_file_from_fd (int fd)
     }
 
   return hash_entry (e, struct fd_file, hash_elem)->file;
+}
+
+/* Check if the new mapping overlaps existing mappings in virtual address space. */
+static bool
+check_overlap (void *addr, size_t length)
+{
+  struct thread *t = thread_current ();
+  void *upage = addr;
+  size_t size = length;
+
+  while (size > 0) 
+    {
+      if (pagedir_get_page (t->pagedir, upage) != NULL || get_page_from_spt (upage) != NULL)
+        {
+          return true; /* Overlaps with existing mapping */
+        }
+      upage += PGSIZE;
+      size -= PGSIZE;
+    }
+  return false;
+}
+
+/* Helper function to unmap a memory-mapped file. */
+void
+do_munmap (struct mmap_file *mmap_file)
+{
+  void *addr = mmap_file->addr;
+  size_t length = mmap_file->length;
+  struct file *file = mmap_file->file;
+  size_t offset = 0;
+
+  while (length > 0) 
+    {
+      size_t page_read_bytes = length < PGSIZE ? length : PGSIZE;
+      void *upage = addr + offset;
+
+      /* If the page is in memory */
+      struct spt_entry *spte = get_page_from_spt (upage);
+      if (spte != NULL && spte->loaded) 
+        {
+          if (pagedir_is_dirty (thread_current ()->pagedir, upage)) 
+            {
+              /* Write back to file */
+              lock_acquire (&filesys_lock);
+              file_write_at (file, upage, page_read_bytes, spte->file_ofs);
+              lock_release (&filesys_lock);
+            }
+          /* Remove page from page table */
+          pagedir_clear_page (thread_current ()->pagedir, upage);
+          /* Free the frame */
+          free_frame (pagedir_get_page (thread_current ()->pagedir, upage));
+          /* Remove from SPT */
+          remove_page_from_spt(upage);
+        }
+
+      offset += PGSIZE;
+      length -= page_read_bytes;
+    }
+
+  /* Close the file */
+  lock_acquire (&filesys_lock);
+  file_close (file);
+  lock_release (&filesys_lock);
 }
 
 void
@@ -479,17 +546,112 @@ sys_close (void *argv[], void *esp UNUSED)
 }
 
 static mapid_t
-sys_mmap (void *argv[], void *esp UNUSED)
+sys_mmap (void *argv[], void *esp)
 {
   int fd = (int) argv[0];
   void *addr = argv[1];
-  return 0;
+
+  /* Validate addr */
+  if (addr == 0 || pg_ofs(addr) != 0) 
+    {
+      return SYS_ERROR;
+    }
+
+  struct file *file = get_file_from_fd (fd);
+  if (file == NULL) 
+    {
+      return SYS_ERROR;
+    }
+
+  lock_acquire (&filesys_lock);
+  size_t length = file_length (file);
+  lock_release (&filesys_lock);
+
+  if (length == 0) 
+    {
+      return SYS_ERROR;
+    }
+
+  /* Check that addr is in user space and not overlapping existing mappings */
+  validate_user_data (addr, length, esp);
+
+  /* Check that the mapping does not overlap any existing mappings */
+  if (check_overlap (addr, length)) 
+    {
+      return SYS_ERROR;
+    }
+
+  struct mmap_file *mmap_file = malloc (sizeof (struct mmap_file));
+  if (mmap_file == NULL) 
+    {
+      return SYS_ERROR;
+    }
+
+  struct thread *t = thread_current ();
+
+  mmap_file->file = file;
+  mmap_file->addr = addr;
+  mmap_file->length = length;
+  mmap_file->mapid = t->next_mapid++;
+
+  hash_insert (&t->mmap_table, &mmap_file->elem);
+
+  /* Add entries to the supplemental page table */
+  size_t offset = 0;
+  while (length > 0) 
+    {
+      size_t read_bytes = length < PGSIZE ? length : PGSIZE;
+      size_t zero_bytes = PGSIZE - read_bytes;
+
+      void *upage = addr + offset;
+      
+      struct spt_entry *spte = malloc (sizeof (struct spt_entry));
+      if (spte == NULL) 
+        {
+          thread_exit ();
+        }
+
+      spte->user_page = upage;
+      spte->state = MMAP_FILE;
+      /* Memory-mapped files are writable by default. */
+      spte->writable = true;
+      spte->file = mmap_file->file;
+      spte->file_ofs = offset;
+      spte->page_read_bytes = read_bytes;
+      spte->page_zero_bytes = zero_bytes;
+      spte->is_mmap = true;
+      spte->mmap_file = mmap_file;
+      spte->loaded = false;
+
+      hash_insert (&t->supp_page_table, &spte->elem);
+
+      offset += PGSIZE;
+      length -= read_bytes;
+    }
+
+  return mmap_file->mapid;
 }
 
 static void
 sys_munmap (void *argv[], void *esp UNUSED)
 {
-  int mapid = (int) argv[0];
+  mapid_t mapid = (mapid_t) argv[0];
+  struct thread *t = thread_current ();
+
+  struct mmap_file temp;
+  temp.mapid = mapid;
+  struct hash_elem *e = hash_find (&t->mmap_table, &temp.elem);
+  if (e == NULL) 
+    {
+      return;
+    }
+
+  struct mmap_file *mmap_file = hash_entry (e, struct mmap_file, elem);
+
+  /* Unmap the file and remove it from the hash table. */
+  do_munmap (mmap_file);
+  hash_delete (&t->mmap_table, &mmap_file->elem);
+  free (mmap_file);
 }
 
 static bool

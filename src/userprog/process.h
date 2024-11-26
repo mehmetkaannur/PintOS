@@ -23,6 +23,7 @@ struct child_info
     int status;                    /* Exit status of child. */
   };
 
+hash_action_func mmap_file_destroy;
 hash_action_func fd_file_destroy;
 
 tid_t process_execute (const char *file_name);
