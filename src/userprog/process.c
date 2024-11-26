@@ -212,6 +212,23 @@ grow_stack (const void *uaddr, const void *esp)
             {
               free_frame (frame);
             }
+          else
+            {
+              /* Add entry for page in supplemental page table. */
+              struct spt_entry *spte = malloc (sizeof (struct spt_entry));
+              if (spte == NULL)
+                {
+                  return false;
+                }
+
+              spte->in_memory = true;
+              spte->user_page = pg_round_down (uaddr);
+              spte->evict_to = SWAP_SPACE;
+              spte->writable = true;
+              spte->kpage = frame;
+
+              hash_insert (&thread_current ()->supp_page_table, &spte->elem);         
+            }
           return success;
         }
     }
@@ -803,9 +820,27 @@ setup_stack (void **esp)
   kpage = get_frame (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+      void *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
+      success = install_page (upage, kpage, true);
       if (success)
-        *esp = PHYS_BASE;
+        {
+          *esp = PHYS_BASE;
+
+          /* Add entry for upage in supplemental page table. */
+          struct spt_entry *spte = malloc (sizeof (struct spt_entry));
+          if (spte == NULL)
+            {
+              return false;
+            }
+
+          spte->in_memory = true;
+          spte->user_page = upage;
+          spte->evict_to = SWAP_SPACE;
+          spte->writable = true;
+          spte->kpage = kpage;
+
+          hash_insert (&thread_current ()->supp_page_table, &spte->elem);         
+        }
       else
         free_frame (kpage);
     }
