@@ -604,13 +604,26 @@ sys_mmap (void *argv[], void *esp)
       size_t zero_bytes = PGSIZE - read_bytes;
 
       void *upage = addr + offset;
-
-      if (!add_mmap_spt_entry (upage, mmap_file, offset, read_bytes, zero_bytes)) 
+      
+      struct spt_entry *spte = malloc (sizeof (struct spt_entry));
+      if (spte == NULL) 
         {
-          /* Handle failure by cleaning up */
-          sys_munmap ((void *[]){ (void *) mmap_file->mapid }, esp);
-          return SYS_ERROR;
+          thread_exit ();
         }
+
+      spte->user_page = upage;
+      spte->state = MMAP_FILE;
+      /* Memory-mapped files are writable by default. */
+      spte->writable = true;
+      spte->file = mmap_file->file;
+      spte->file_ofs = offset;
+      spte->page_read_bytes = read_bytes;
+      spte->page_zero_bytes = zero_bytes;
+      spte->is_mmap = true;
+      spte->mmap_file = mmap_file;
+      spte->loaded = false;
+
+      hash_insert (&t->supp_page_table, &spte->elem);
 
       offset += PGSIZE;
       length -= read_bytes;
