@@ -4,14 +4,20 @@
 #include <hash.h>
 #include "threads/palloc.h"
 
+struct frame_reference
+  {
+    uint32_t *pd;             /* Page directory of thread which has
+                                 reference to frame. */
+    void *upage;              /* User virtual address of page in frame. */
+    struct list_elem elem;    /* List element for frame table entry. */
+  };
+
 /* Entry for frame table. */
 struct frame_table_entry
   {
     void *frame;                    /* Kernel virtual address for frame. */
-    struct thread *owner;           /* Pointer to thread which owns frame. */
+    struct list frame_references;   /* List of references to frame. */
     struct hash_elem hash_elem;     /* Hash element. */
-    struct list page_table_entries; /* List of page table entries 
-                                       referring to frame. */
   };
 
 void frame_table_init (void);

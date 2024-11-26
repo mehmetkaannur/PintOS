@@ -140,12 +140,12 @@ get_page (const void *fault_addr, const void *esp, bool write)
   void *frame = get_frame (PAL_USER);
 
   /* Fetch data into frame. */
-  if (spte->state == SWAPPED)
+  if (spte->evict_to == SWAP_SPACE)
     {
       /* Swap in the page. */
       PANIC ("Not implemented.");
     }
-  else if (spte->state == FILE_SYSTEM || spte->state == MMAP_FILE)
+  else if (spte->evict_to == FILE_SYSTEM || spte->evict_to == MMAP_FILE)
     {
       /* Load the page from the file system. */
       if (spte->page_read_bytes != 0)
@@ -175,12 +175,15 @@ get_page (const void *fault_addr, const void *esp, bool write)
     {
       free_frame (frame);
     }
+  else
+    {
+      /* Set the page as loaded. */
+      spte->loaded = true;
 
-  /* Set the page as loaded. */
-  spte->loaded = true;
-
-  /* Remove supplemental page table entry. */
-  hash_delete (&thread_current ()->supp_page_table, &spte->elem);
+      /* Update supplemental page table entry. */
+      spte->in_memory = true;
+      spte->kpage = frame;
+    }
 
   return success;
 }

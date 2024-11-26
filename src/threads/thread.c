@@ -477,7 +477,7 @@ thread_create (const char *name, int priority,
 
   /* Set up supplemental page table. */
   bool supp_page_table_success = hash_init (&t->supp_page_table,
-                                            hash_spt, less_spt, NULL);
+                                            hash_spte, less_spte, NULL);
                                       
   if (!supp_page_table_success)
     {
