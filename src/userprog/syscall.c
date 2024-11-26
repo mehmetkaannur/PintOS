@@ -186,41 +186,19 @@ do_munmap (struct mmap_file *mmap_file)
 {
   void *addr = mmap_file->addr;
   size_t length = mmap_file->length;
-  struct file *file = mmap_file->file;
   size_t offset = 0;
 
   while (length > 0) 
     {
       size_t page_read_bytes = length < PGSIZE ? length : PGSIZE;
       void *upage = addr + offset;
-
-      /* If the page is in memory */
+      
       struct spt_entry *spte = get_page_from_spt (upage);
-      if (spte != NULL && spte->in_memory) 
-        {
-          if (pagedir_is_dirty (thread_current ()->pagedir, upage)) 
-            {
-              /* Write back to file */
-              lock_acquire (&filesys_lock);
-              file_write_at (file, upage, page_read_bytes, spte->file_ofs);
-              lock_release (&filesys_lock);
-            }
-          /* Remove page from page table */
-          pagedir_clear_page (thread_current ()->pagedir, upage);
-          /* Free the frame */
-          free_frame (pagedir_get_page (thread_current ()->pagedir, upage));
-          /* Remove from SPT */
-          remove_page_from_spt(upage);
-        }
-
+      destroy_spte (&spte->elem, NULL);
+      
       offset += PGSIZE;
       length -= page_read_bytes;
     }
-
-  /* Close the file */
-  lock_acquire (&filesys_lock);
-  file_close (file);
-  lock_release (&filesys_lock);
 }
 
 void
