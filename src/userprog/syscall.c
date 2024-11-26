@@ -651,6 +651,7 @@ sys_munmap (void *argv[], void *esp UNUSED)
   /* Unmap the file and remove it from the hash table. */
   do_munmap (mmap_file);
   hash_delete (&t->mmap_table, &mmap_file->elem);
+  free (mmap_file);
 }
 
 static bool

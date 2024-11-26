@@ -3,6 +3,7 @@
 #include "filesys/file.h"
 #include "threads/thread.h"
 #include "threads/malloc.h"
+#include "threads/vaddr.h"
 #include "userprog/syscall.h"
 
 unsigned
@@ -25,7 +26,7 @@ struct spt_entry *
 get_page_from_spt (void *upage)
 {
   struct spt_entry temp_spte;
-  temp_spte.user_page = upage;
+  temp_spte.user_page = pg_round_down (upage);
   struct hash_elem *e = hash_find (&thread_current ()->supp_page_table, &temp_spte.elem);
   if (e != NULL) 
     {
