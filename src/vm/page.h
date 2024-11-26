@@ -25,7 +25,6 @@ struct spt_entry
     uint32_t file_ofs;            /* Offset in file to read data from. */
     uint32_t page_read_bytes;     /* Number of bytes to read from file. */
     uint32_t page_zero_bytes;     /* Number of bytes to zero in page. */
-    struct mmap_file *mmap_file;  /* Pointer to the mmap_file structure. */
     void *kpage;                  /* Kernel virtual page if in memory. */
   };
 
