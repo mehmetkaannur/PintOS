@@ -580,7 +580,7 @@ sys_mmap (void *argv[], void *esp UNUSED)
     }
 
   /* Check that addr is in user space and not overlapping existing mappings */
-  validate_user_data (addr, length);
+  validate_user_data (addr, length, esp);
 
   /* Check that the mapping does not overlap any existing mappings */
   if (check_overlap (addr, length)) 
@@ -617,7 +617,7 @@ sys_mmap (void *argv[], void *esp UNUSED)
       if (!add_mmap_spt_entry (upage, mmap_file, offset, read_bytes, zero_bytes)) 
         {
           /* Handle failure by cleaning up */
-          sys_munmap ((void *[]){ (void *) mmap_file->mapid });
+          sys_munmap ((void *[]){ (void *) mmap_file->mapid }, esp);
           return SYS_ERROR;
         }
 
