@@ -180,27 +180,6 @@ check_overlap (void *addr, size_t length)
   return false;
 }
 
-/* Helper function to unmap a memory-mapped file. */
-void
-do_munmap (struct mmap_file *mmap_file)
-{
-  void *addr = mmap_file->addr;
-  size_t length = mmap_file->length;
-  size_t offset = 0;
-
-  while (length > 0) 
-    {
-      size_t page_read_bytes = length < PGSIZE ? length : PGSIZE;
-      void *upage = addr + offset;
-      
-      struct spt_entry *spte = get_page_from_spt (upage);
-      destroy_spte (&spte->elem, NULL);
-      
-      offset += PGSIZE;
-      length -= page_read_bytes;
-    }
-}
-
 void
 syscall_init (void) 
 {
@@ -624,7 +603,22 @@ sys_munmap (void *argv[], void *esp UNUSED)
   struct mmap_file *mmap_file = hash_entry (e, struct mmap_file, elem);
 
   /* Unmap the file and remove it from the hash table. */
-  do_munmap (mmap_file);
+  void *addr = mmap_file->addr;
+  size_t length = mmap_file->length;
+  size_t offset = 0;
+
+  while (length > 0) 
+    {
+      size_t page_read_bytes = length < PGSIZE ? length : PGSIZE;
+      void *upage = addr + offset;
+      
+      struct spt_entry *spte = get_page_from_spt (upage);
+      destroy_spte (&spte->elem, NULL);
+      
+      offset += PGSIZE;
+      length -= page_read_bytes;
+    }
+
   hash_delete (&t->mmap_table, &mmap_file->elem);
   free (mmap_file);
 }

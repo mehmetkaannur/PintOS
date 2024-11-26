@@ -17,7 +17,6 @@ struct mmap_file
   };
 
 void syscall_init (void);
-void do_munmap (struct mmap_file *mmap_file);
 
 /* File with file descriptor (fd). */
 struct fd_file

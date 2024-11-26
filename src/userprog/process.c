@@ -79,7 +79,6 @@ void
 mmap_file_destroy (struct hash_elem *e, void *aux UNUSED)
 {
   struct mmap_file *mmap_file = hash_entry (e, struct mmap_file, elem);
-  do_munmap (mmap_file);
   free (mmap_file);
 }
 
