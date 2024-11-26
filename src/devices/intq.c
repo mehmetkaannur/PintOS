@@ -2,11 +2,8 @@
 #include <debug.h>
 #include "threads/thread.h"
 
-/* Declare the wait function from syscall.c with a different name */
-#define syscall_wait wait
-
 static int next (int pos);
-static void wait (struct intq *q, struct thread **waiter);
+static void intq_wait (struct intq *q, struct thread **waiter);
 static void signal (struct intq *q, struct thread **waiter);
 
 /* Initializes interrupt queue Q. */
@@ -47,7 +44,7 @@ intq_getc (struct intq *q)
     {
       ASSERT (!intr_context ());
       lock_acquire (&q->lock);
-      wait (q, &q->not_empty);
+      intq_wait (q, &q->not_empty);
       lock_release (&q->lock);
     }
   
@@ -68,7 +65,7 @@ intq_putc (struct intq *q, uint8_t byte)
     {
       ASSERT (!intr_context ());
       lock_acquire (&q->lock);
-      wait (q, &q->not_full);
+      intq_wait (q, &q->not_full);
       lock_release (&q->lock);
     }
 
@@ -87,7 +84,7 @@ next (int pos)
 /* WAITER must be the address of Q's not_empty or not_full
    member.  Waits until the given condition is true. */
 static void
-wait (struct intq *q UNUSED, struct thread **waiter) 
+intq_wait (struct intq *q UNUSED, struct thread **waiter) 
 {
   ASSERT (!intr_context ());
   ASSERT (intr_get_level () == INTR_OFF);
