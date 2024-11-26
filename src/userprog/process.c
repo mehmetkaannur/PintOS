@@ -25,8 +25,12 @@
 #include "vm/frame.h"
 #include "vm/page.h"
 
+/* Maximum stack size of 8MB.*/
+#define MAX_STACK_SIZE (1 << 23)
 #define WORD_SIZE 4
 #define NUM_ADDITIONAL_STACK_ADDRS 4
+#define PUSHA_SIZE 32
+#define PUSH_SIZE 4
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -109,7 +113,7 @@ process_execute (const char *command)
 
   /* Maximum possible arguments on stack occurs when each tokenised arg
      has 1 character and a null terminator (e.g. "a\0"). */
-  size_t max_allowed_args = (PGSIZE - stack_size) 
+  size_t max_allowed_args = (MAX_STACK_SIZE - stack_size) 
                            / (sizeof (char) * 2 + sizeof (char *));
 
   /* The number of arguments is limited by the maximum that will fit on the
@@ -175,6 +179,44 @@ process_execute (const char *command)
     }
   
   return tid;
+}
+
+/* Grow user stack if required. */
+bool
+grow_stack (const void *uaddr, const void *esp)
+{
+  /* Check we are handling a user virtual address. */
+  if (is_kernel_vaddr (uaddr))
+    {
+      return false;
+    }
+
+  /* Check for stack that is too large. */
+  if (uaddr < PHYS_BASE - MAX_STACK_SIZE)
+    {
+      return false;
+    }
+
+  /* Check for stack growth request. */  
+  int diff = esp - uaddr;
+  if (uaddr >= esp || diff == PUSHA_SIZE || diff == PUSH_SIZE)
+    {
+      void *frame = get_frame (PAL_USER);
+      if (frame != NULL)
+        {
+          bool success = pagedir_set_page (thread_current ()->pagedir,
+                                           pg_round_down (uaddr),
+                                           frame,
+                                           true);
+          if (!success)
+            {
+              free_frame (frame);
+            }
+          return success;
+        }
+    }
+  return false;
+
 }
 
 /* Push argument ARG of size SIZE to stack given by ESP. */
@@ -704,24 +746,38 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       
       /* Set upage as unmapped. */
       struct thread *t = thread_current ();
-      pagedir_clear_page (t->pagedir, upage);
       
-      /* Add entry for upage in supplemental page table. */
-      struct spt_entry *spte = malloc (sizeof (struct spt_entry));
-      if (spte == NULL)
+      struct spt_entry entry;
+      entry.user_page = upage;
+      struct hash_elem *e = hash_find (&t->supp_page_table, &entry.elem);
+
+      if (e == NULL && !pagedir_get_page (t->pagedir, upage))
         {
-          return false;
+          /* Add entry for upage in supplemental page table. */
+          struct spt_entry *spte = malloc (sizeof (struct spt_entry));
+          if (spte == NULL)
+            {
+              return false;
+            }
+
+          spte->user_page = upage;
+          spte->state = FILE_SYSTEM;
+          spte->file = file;
+          spte->file_ofs = curr_ofs; 
+          spte->page_read_bytes = page_read_bytes;
+          spte->page_zero_bytes = page_zero_bytes;
+          spte->writable = writable;
+
+          hash_insert (&t->supp_page_table, &spte->elem);
         }
-
-      spte->user_page = upage;
-      spte->state = FILE_SYSTEM;
-      spte->file = file;
-      spte->file_ofs = curr_ofs; 
-      spte->page_read_bytes = page_read_bytes;
-      spte->page_zero_bytes = page_zero_bytes;
-      spte->writable = writable;
-
-      hash_insert (&t->supp_page_table, &spte->elem);
+      else
+        {
+          struct spt_entry *spte = hash_entry (e, struct spt_entry, elem);
+          if (writable && !spte->writable)
+            {
+              spte->writable = true;
+            }
+        }
 
       /* Advance. */
       read_bytes -= page_read_bytes;
