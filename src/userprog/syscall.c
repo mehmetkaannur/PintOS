@@ -11,6 +11,7 @@
 #include "threads/malloc.h"
 #include "filesys/file.h"
 #include "userprog/process.h"
+#include "userprog/exception.h"
 #include "devices/input.h"
 #include "filesys/filesys.h"
 #include "devices/shutdown.h"
