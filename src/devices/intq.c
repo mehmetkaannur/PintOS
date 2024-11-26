@@ -2,6 +2,9 @@
 #include <debug.h>
 #include "threads/thread.h"
 
+/* Declare the wait function from syscall.c with a different name */
+#define syscall_wait wait
+
 static int next (int pos);
 static void wait (struct intq *q, struct thread **waiter);
 static void signal (struct intq *q, struct thread **waiter);
