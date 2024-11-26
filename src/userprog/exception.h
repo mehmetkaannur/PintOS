@@ -11,6 +11,6 @@
 void exception_init (void);
 void exception_print_stats (void);
 
-bool get_page (void *fault_addr, void *esp, bool write);
+bool get_page (const void *fault_addr, const void *esp, bool write);
 
 #endif /* userprog/exception.h */

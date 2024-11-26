@@ -11,6 +11,7 @@
 #include "userprog/process.h"
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "userprog/process.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -113,7 +114,7 @@ kill (struct intr_frame *f)
 }
 
 bool
-get_page (void *fault_addr, void *esp, bool write)
+get_page (const void *fault_addr, const void *esp, bool write)
 {
   /* Find relevant entry in supplemental page table. */
   struct spt_entry entry;
@@ -144,7 +145,7 @@ get_page (void *fault_addr, void *esp, bool write)
       /* Swap in the page. */
       PANIC ("Not implemented.");
     }
-  else if (spte->evict_to == FILE_SYSTEM)
+  else if (spte->evict_to == FILE_SYSTEM || spte->evict_to == MMAP_FILE)
     {
       /* Load the page from the file system. */
       if (spte->page_read_bytes != 0)
@@ -176,6 +177,9 @@ get_page (void *fault_addr, void *esp, bool write)
     }
   else
     {
+      /* Set the page as loaded. */
+      spte->loaded = true;
+
       /* Update supplemental page table entry. */
       spte->in_memory = true;
       spte->kpage = frame;
@@ -239,4 +243,3 @@ page_fault (struct intr_frame *f)
           user ? "user" : "kernel");
   kill (f);
 }
-

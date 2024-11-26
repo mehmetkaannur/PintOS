@@ -1,10 +1,15 @@
+#ifndef VM_PAGE_H
+#define VM_PAGE_H
+
 #include <hash.h>
+#include "filesys/off_t.h"
 
 /* Possible states of a page not in memory, recorded in SPT. */
 enum evict_location
   {
     SWAP_SPACE,                   /* Page is in swap space. */
     FILE_SYSTEM,                  /* Page is in file system. */
+    MMAP_FILE                     /* Page is part of a memory-mapped file. */
   };
 
 /* Supplemental page table (SPT) entry. */
@@ -20,9 +25,19 @@ struct spt_entry
     uint32_t file_ofs;            /* Offset in file to read data from. */
     uint32_t page_read_bytes;     /* Number of bytes to read from file. */
     uint32_t page_zero_bytes;     /* Number of bytes to zero in page. */
+
+    /* For memory-mapped files. */
+    bool is_mmap;                 /* True if the page is memory-mapped. */
+    struct mmap_file *mmap_file;  /* Pointer to the mmap_file structure. */
+
+    bool loaded;                  /* True if the page is loaded into memory. */
     void *kpage;                  /* Kernel virtual page if in memory. */
   };
 
 hash_hash_func hash_spte;
 hash_less_func less_spte;
 hash_action_func destroy_spte;
+struct spt_entry * get_page_from_spt (void *upage);
+void remove_page_from_spt (void *upage);
+
+#endif /* vm/page.h */

@@ -118,6 +118,23 @@ hash_less (const struct hash_elem *a, const struct hash_elem *b,
   return fa->fd < fb->fd;
 }
 
+/* Hash function for memory mapped files. */
+static unsigned
+mmap_file_hash (const struct hash_elem *e, void *aux UNUSED) 
+{
+  const struct mmap_file *mmap_file = hash_entry (e, struct mmap_file, elem);
+  return hash_bytes (&mmap_file->mapid, sizeof mmap_file->mapid);
+}
+
+/* Comparison function for memory mapped files. */
+static bool
+mmap_file_less (const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED) 
+{
+  const struct mmap_file *mmap_a = hash_entry (a, struct mmap_file, elem);
+  const struct mmap_file *mmap_b = hash_entry (b, struct mmap_file, elem);
+  return mmap_a->mapid < mmap_b->mapid;
+}
+
 /* Hash function for child_info struct. */
 static unsigned
 hash_child_info (const struct hash_elem *e, void *aux UNUSED)
@@ -463,6 +480,13 @@ thread_create (const char *name, int priority,
                                             hash_spte, less_spte, NULL);
                                       
   if (!supp_page_table_success)
+    {
+      thread_exit ();
+    }
+
+  bool mmap_files_success = hash_init (&t->mmap_table, mmap_file_hash, mmap_file_less, NULL);
+
+  if (!mmap_files_success) 
     {
       thread_exit ();
     }
@@ -871,6 +895,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->waiting_lock = NULL;
   t->magic = THREAD_MAGIC;
   list_init (&t->locks);
+
+  t->next_mapid = 1;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
