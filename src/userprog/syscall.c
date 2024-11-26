@@ -567,7 +567,6 @@ sys_mmap (void *argv[], void *esp)
 
   struct thread *t = thread_current ();
 
-  mmap_file->file = file;
   mmap_file->addr = addr;
   mmap_file->length = length;
   mmap_file->mapid = t->next_mapid++;
@@ -593,7 +592,7 @@ sys_mmap (void *argv[], void *esp)
       spte->evict_to = FILE_SYSTEM;
       /* Memory-mapped files are writable by default. */
       spte->writable = true;
-      spte->file = mmap_file->file;
+      spte->file = file;
       spte->file_ofs = offset;
       spte->page_read_bytes = read_bytes;
       spte->page_zero_bytes = zero_bytes;
