@@ -145,7 +145,7 @@ get_page (const void *fault_addr, const void *esp, bool write)
       /* Swap in the page. */
       PANIC ("Not implemented.");
     }
-  else if (spte->evict_to == FILE_SYSTEM || spte->evict_to == MMAP_FILE)
+  else if (spte->evict_to == FILE_SYSTEM)
     {
       /* Load the page from the file system. */
       if (spte->page_read_bytes != 0)
@@ -177,9 +177,6 @@ get_page (const void *fault_addr, const void *esp, bool write)
     }
   else
     {
-      /* Set the page as loaded. */
-      spte->loaded = true;
-
       /* Update supplemental page table entry. */
       spte->in_memory = true;
       spte->kpage = frame;

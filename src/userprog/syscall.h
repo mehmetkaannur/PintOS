@@ -10,7 +10,6 @@
 struct mmap_file 
   {
     mapid_t mapid;               /* Mapping ID */
-    struct file *file;           /* File being mapped */
     void *addr;                  /* Start address of the mapping */
     size_t length;               /* Length of the mapping */
     struct hash_elem elem;       /* Hash element for process's mmap
@@ -18,7 +17,6 @@ struct mmap_file
   };
 
 void syscall_init (void);
-void do_munmap (struct mmap_file *mmap_file);
 
 /* File with file descriptor (fd). */
 struct fd_file

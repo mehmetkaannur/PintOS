@@ -36,7 +36,7 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
   if (spte->in_memory)
     {
       /* Write page back to file system, if dirty. */ 
-      if (spte->evict_to == FILE_SYSTEM
+      if ((spte->evict_to == FILE_SYSTEM)
           && pagedir_is_dirty (thread_current ()->pagedir, spte->user_page))
         {
           lock_acquire (&filesys_lock);
