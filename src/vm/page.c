@@ -13,7 +13,7 @@ unsigned
 hash_spte (const struct hash_elem *e, void *aux UNUSED)
 {
   const struct spt_entry *spte = hash_entry (e, struct spt_entry, elem);
-  return hash_bytes (&spte->user_page, sizeof spte->user_page);
+  return hash_ptr (spte->user_page);
 }
 
 /* Less function for supplemental page table entry. */
