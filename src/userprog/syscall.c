@@ -563,20 +563,12 @@ sys_mmap (void *argv[], void *esp)
       return SYS_ERROR;
     }
 
-  /* Reopen the file to have a separate reference */
-  // file = file_reopen (file);
-  // if (file == NULL) 
-  //   {
-  //     return SYS_ERROR;
-  //   }
-
   lock_acquire (&filesys_lock);
   size_t length = file_length (file);
   lock_release (&filesys_lock);
 
   if (length == 0) 
     {
-      file_close (file);
       return SYS_ERROR;
     }
 
@@ -586,14 +578,12 @@ sys_mmap (void *argv[], void *esp)
   /* Check that the mapping does not overlap any existing mappings */
   if (check_overlap (addr, length)) 
     {
-      file_close (file);
       return SYS_ERROR;
     }
 
   struct mmap_file *mmap_file = malloc (sizeof (struct mmap_file));
   if (mmap_file == NULL) 
     {
-      file_close (file);
       return SYS_ERROR;
     }
 
