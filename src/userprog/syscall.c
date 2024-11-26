@@ -545,7 +545,7 @@ sys_close (void *argv[], void *esp UNUSED)
 }
 
 static mapid_t
-sys_mmap (void *argv[], void *esp UNUSED)
+sys_mmap (void *argv[], void *esp)
 {
   int fd = (int) argv[0];
   void *addr = argv[1];
