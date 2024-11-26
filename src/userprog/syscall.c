@@ -508,12 +508,6 @@ sys_mmap (void *argv[], void *esp)
   int fd = (int) argv[0];
   void *addr = argv[1];
 
-  /* Validate addr */
-  if (addr == 0 || pg_ofs(addr) != 0) 
-    {
-      return SYS_ERROR;
-    }
-
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
@@ -529,7 +523,11 @@ sys_mmap (void *argv[], void *esp)
       return SYS_ERROR;
     }
 
-  /* Check that addr is in user space and not overlapping existing mappings */
+  /* Ensure addr is a valid user address and is page aligned. */
+  if (addr == 0 || pg_ofs (addr) != 0) 
+    {
+      return SYS_ERROR;
+    }
   validate_user_data (addr, length, esp);
 
   /* Check that the mapping does not overlap any existing mappings */
