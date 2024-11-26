@@ -114,7 +114,7 @@ kill (struct intr_frame *f)
 }
 
 bool
-get_page (void *fault_addr, void *esp, bool write)
+get_page (const void *fault_addr, const void *esp, bool write)
 {
   /* Find relevant entry in supplemental page table. */
   struct spt_entry entry;
