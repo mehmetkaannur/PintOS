@@ -370,6 +370,9 @@ process_exit (void)
   hash_destroy (&cur->fd_file_map, fd_file_destroy);
   lock_release (&filesys_lock);
 
+  /* Free all supplemental page table entries and associated resources. */
+  hash_destroy (&cur->supp_page_table, destroy_spte);
+  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   uint32_t *pd;
@@ -397,9 +400,6 @@ process_exit (void)
       lock_release (&filesys_lock);
       cur->executable = NULL;
     }
-
-  /* Free all supplemental page table entries and associated resources. */
-  hash_destroy (&cur->supp_page_table, destroy_spte);
 }
 
 /* Sets up the CPU for running user code in the current
@@ -716,8 +716,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           return false;
         }
 
+      spte->in_memory = false;
       spte->user_page = upage;
-      spte->state = FILE_SYSTEM;
+      spte->evict_to = FILE_SYSTEM;
       spte->file = file;
       spte->file_ofs = curr_ofs; 
       spte->page_read_bytes = page_read_bytes;

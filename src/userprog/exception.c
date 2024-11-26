@@ -168,12 +168,12 @@ page_fault (struct intr_frame *f)
           void *frame = get_frame (PAL_USER);
 
           /* Fetch data into frame. */
-          if (spte->state == SWAPPED)
+          if (spte->evict_to == SWAP_SPACE)
             {
               /* Swap in the page. */
               PANIC ("Not implemented.");
             }
-          else if (spte->state == FILE_SYSTEM)
+          else if (spte->evict_to == FILE_SYSTEM)
             {
               /* Load the page from the file system. */
               if (spte->page_read_bytes != 0)
@@ -206,7 +206,7 @@ page_fault (struct intr_frame *f)
           else
             {
               /* Update supplemental page table entry. */
-              spte->state = IN_MEMORY;
+              spte->in_memory = true;
               spte->kpage = frame;
             }
 
