@@ -9,7 +9,6 @@ enum evict_location
   {
     SWAP_SPACE,                   /* Page is in swap space. */
     FILE_SYSTEM,                  /* Page is in file system. */
-    MMAP_FILE                     /* Page is part of a memory-mapped file. */
   };
 
 /* Supplemental page table (SPT) entry. */
