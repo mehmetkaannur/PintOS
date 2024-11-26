@@ -128,15 +128,6 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
   };
 
-/* Represents a memory-mapped file */
-struct mmap_file {
-    mapid_t mapid;                /* Mapping ID */
-    struct file *file;            /* File being mapped */
-    void *addr;                   /* Start address of the mapping */
-    size_t length;                /* Length of the mapping */
-    struct hash_elem elem;        /* Hash element for process's mmap hash table. */
-};
-
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "mlfqs". */

@@ -6,6 +6,17 @@
 #include "filesys/file.h"
 #include "threads/thread.h"
 
+/* Represents a memory-mapped file */
+struct mmap_file 
+  {
+    mapid_t mapid;               /* Mapping ID */
+    struct file *file;           /* File being mapped */
+    void *addr;                  /* Start address of the mapping */
+    size_t length;               /* Length of the mapping */
+    struct hash_elem elem;       /* Hash element for process's mmap
+                                    hash table. */
+  };
+
 void syscall_init (void);
 void do_munmap (struct mmap_file *mmap_file);
 
