@@ -157,12 +157,12 @@ check_overlap (void *addr, size_t length)
 
   while (size > 0) 
     {
-      if (pagedir_get_page (t->pagedir, upage) != NULL) 
+      if (pagedir_get_page (t->pagedir, upage) != NULL || get_page_from_spt (upage) != NULL)
         {
           return true; /* Overlaps with existing mapping */
         }
       upage += PGSIZE;
-      size -= size < PGSIZE ? size : PGSIZE;
+      size -= PGSIZE;
     }
   return false;
 }
@@ -195,7 +195,7 @@ do_munmap (struct mmap_file *mmap_file)
           /* Remove page from page table */
           pagedir_clear_page (thread_current ()->pagedir, upage);
           /* Free the frame */
-          free_frame(pagedir_get_page(thread_current()->pagedir, upage));
+          free_frame (pagedir_get_page (thread_current ()->pagedir, upage));
           /* Remove from SPT */
           remove_page_from_spt(upage);
         }
@@ -539,28 +539,23 @@ sys_mmap (void *argv[])
   void *addr = argv[1];
 
   /* Validate addr */
-  if (addr == NULL || addr == 0 || pg_ofs(addr) != 0) 
+  if (addr == 0 || pg_ofs(addr) != 0) 
     {
-      return -1;
-    }
-
-  if (fd <= STDOUT_FILENO) /* 0 and 1 are stdin and stdout */
-    {
-      return -1;
+      return SYS_ERROR;
     }
 
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
-      return -1;
+      return SYS_ERROR;
     }
 
   /* Reopen the file to have a separate reference */
-  file = file_reopen (file);
-  if (file == NULL) 
-    {
-      return -1;
-    }
+  // file = file_reopen (file);
+  // if (file == NULL) 
+  //   {
+  //     return SYS_ERROR;
+  //   }
 
   lock_acquire (&filesys_lock);
   size_t length = file_length (file);
@@ -569,35 +564,24 @@ sys_mmap (void *argv[])
   if (length == 0) 
     {
       file_close (file);
-      return -1;
+      return SYS_ERROR;
     }
 
   /* Check that addr is in user space and not overlapping existing mappings */
-  if (!is_user_vaddr (addr) || !is_user_vaddr (addr + length)) 
-    {
-      file_close (file);
-      return -1;
-    }
-
-  /* Check for overlapping mappings or stack */
-  if (addr < PHYS_BASE - STACK_MAX && addr + length >= PHYS_BASE - STACK_MAX) 
-    {
-      file_close (file);
-      return -1;
-    }
+  validate_user_data (addr, length);
 
   /* Check that the mapping does not overlap any existing mappings */
   if (check_overlap (addr, length)) 
     {
       file_close (file);
-      return -1;
+      return SYS_ERROR;
     }
 
   struct mmap_file *mmap_file = malloc (sizeof (struct mmap_file));
   if (mmap_file == NULL) 
     {
       file_close (file);
-      return -1;
+      return SYS_ERROR;
     }
 
   struct thread *t = thread_current ();
@@ -622,7 +606,7 @@ sys_mmap (void *argv[])
         {
           /* Handle failure by cleaning up */
           sys_munmap ((void *[]){ (void *) mmap_file->mapid });
-          return -1;
+          return SYS_ERROR;
         }
 
       offset += PGSIZE;

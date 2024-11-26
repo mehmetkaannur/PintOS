@@ -5,7 +5,6 @@
 #include <list.h>
 #include <stdint.h>
 #include "hash.h"
-#include <user/syscall.h>
 
 typedef int32_t fixed_point_t;
 
