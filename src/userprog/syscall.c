@@ -537,14 +537,22 @@ sys_mmap (void *argv[], void *esp)
       return SYS_ERROR;
     }
 
+  file = file_reopen (file);
+  if (file == NULL) 
+    {
+      return SYS_ERROR;
+    }
+
   struct mmap_file *mmap_file = malloc (sizeof (struct mmap_file));
   if (mmap_file == NULL) 
     {
+      file_close (file);
       return SYS_ERROR;
     }
 
   struct thread *t = thread_current ();
 
+  mmap_file->file = file;
   mmap_file->addr = addr;
   mmap_file->length = length;
   mmap_file->mapid = t->next_mapid++;
@@ -563,6 +571,7 @@ sys_mmap (void *argv[], void *esp)
       struct spt_entry *spte = malloc (sizeof (struct spt_entry));
       if (spte == NULL) 
         {
+          file_close (file);
           thread_exit ();
         }
 
@@ -619,6 +628,7 @@ sys_munmap (void *argv[], void *esp UNUSED)
       length -= page_read_bytes;
     }
 
+  file_close (mmap_file->file);
   hash_delete (&t->mmap_table, &mmap_file->elem);
   free (mmap_file);
 }

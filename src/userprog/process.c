@@ -79,6 +79,7 @@ void
 mmap_file_destroy (struct hash_elem *e, void *aux UNUSED)
 {
   struct mmap_file *mmap_file = hash_entry (e, struct mmap_file, elem);
+  file_close (mmap_file->file);
   free (mmap_file);
 }
 
@@ -431,9 +432,6 @@ process_exit (void)
      to children of this thread. */
   hash_destroy (&cur->children_map, child_info_destroy);
 
-  /* Unmap all memory-mapped files. */
-  hash_destroy (&cur->mmap_table, mmap_file_destroy);
-
   /* Destroy this thread's fd_file_map and all fd_file structs related
      to the open files of this thread. */
   lock_acquire (&filesys_lock);
@@ -443,6 +441,9 @@ process_exit (void)
   /* Free all supplemental page table entries and associated resources. */
   hash_destroy (&cur->supp_page_table, destroy_spte);
   
+  /* Unmap all memory-mapped files. */
+  hash_destroy (&cur->mmap_table, mmap_file_destroy);
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   uint32_t *pd;
