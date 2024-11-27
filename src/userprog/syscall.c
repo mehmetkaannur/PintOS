@@ -175,7 +175,7 @@ check_overlap (void *addr, size_t length)
           return true; /* Overlaps with existing mapping */
         }
       upage += PGSIZE;
-      size -= PGSIZE;
+      size -= size > PGSIZE ? PGSIZE : size;
     }
   return false;
 }
@@ -524,11 +524,12 @@ sys_mmap (void *argv[], void *esp)
     }
 
   /* Ensure addr is a valid user address and is page aligned. */
-  if (addr == 0 || pg_ofs (addr) != 0) 
+  if (addr == 0
+      || pg_ofs (addr) != 0
+      || !is_user_vaddr (addr + length - 1)) 
     {
       return SYS_ERROR;
     }
-  validate_user_data (addr, length, esp);
 
   /* Check that the mapping does not overlap any existing mappings */
   if (check_overlap (addr, length)) 
@@ -611,6 +612,7 @@ sys_munmap (void *argv[], void *esp UNUSED)
       void *upage = addr + offset;
       
       struct spt_entry *spte = get_page_from_spt (upage);
+      hash_delete (&t->supp_page_table, &spte->elem);
       destroy_spte (&spte->elem, NULL);
       
       offset += PGSIZE;
