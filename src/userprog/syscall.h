@@ -10,6 +10,7 @@
 struct mmap_file 
   {
     mapid_t mapid;               /* Mapping ID */
+    struct file *file;           /* File pointer */
     void *addr;                  /* Start address of the mapping */
     size_t length;               /* Length of the mapping */
     struct hash_elem elem;       /* Hash element for process's mmap

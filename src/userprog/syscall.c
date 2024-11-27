@@ -175,7 +175,7 @@ check_overlap (void *addr, size_t length)
           return true; /* Overlaps with existing mapping */
         }
       upage += PGSIZE;
-      size -= PGSIZE;
+      size -= size > PGSIZE ? PGSIZE : size;
     }
   return false;
 }
@@ -524,11 +524,12 @@ sys_mmap (void *argv[], void *esp)
     }
 
   /* Ensure addr is a valid user address and is page aligned. */
-  if (addr == 0 || pg_ofs (addr) != 0) 
+  if (addr == 0
+      || pg_ofs (addr) != 0
+      || !is_user_vaddr (addr + length - 1)) 
     {
       return SYS_ERROR;
     }
-  validate_user_data (addr, length, esp);
 
   /* Check that the mapping does not overlap any existing mappings */
   if (check_overlap (addr, length)) 
@@ -536,14 +537,22 @@ sys_mmap (void *argv[], void *esp)
       return SYS_ERROR;
     }
 
+  file = file_reopen (file);
+  if (file == NULL) 
+    {
+      return SYS_ERROR;
+    }
+
   struct mmap_file *mmap_file = malloc (sizeof (struct mmap_file));
   if (mmap_file == NULL) 
     {
+      file_close (file);
       return SYS_ERROR;
     }
 
   struct thread *t = thread_current ();
 
+  mmap_file->file = file;
   mmap_file->addr = addr;
   mmap_file->length = length;
   mmap_file->mapid = t->next_mapid++;
@@ -562,6 +571,7 @@ sys_mmap (void *argv[], void *esp)
       struct spt_entry *spte = malloc (sizeof (struct spt_entry));
       if (spte == NULL) 
         {
+          file_close (file);
           thread_exit ();
         }
 
@@ -611,12 +621,14 @@ sys_munmap (void *argv[], void *esp UNUSED)
       void *upage = addr + offset;
       
       struct spt_entry *spte = get_page_from_spt (upage);
+      hash_delete (&t->supp_page_table, &spte->elem);
       destroy_spte (&spte->elem, NULL);
       
       offset += PGSIZE;
       length -= page_read_bytes;
     }
 
+  file_close (mmap_file->file);
   hash_delete (&t->mmap_table, &mmap_file->elem);
   free (mmap_file);
 }
