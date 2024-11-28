@@ -8,6 +8,7 @@
 #include "userprog/syscall.h"
 #include "userprog/pagedir.h"
 #include "filesys/file.h"
+#include "devices/swap.h"
 
 /* Hash function for supplemental page table entry. */
 unsigned
@@ -50,7 +51,7 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
   else if (spte->evict_to == SWAP_SPACE)
     {
       /* Remove page from swap space. */
-      PANIC ("Not implemented.");
+      swap_drop (spte->swap_slot);
     }
 
   free (spte);

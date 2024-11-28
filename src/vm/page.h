@@ -25,6 +25,7 @@ struct spt_entry
     uint32_t page_read_bytes;     /* Number of bytes to read from file. */
     uint32_t page_zero_bytes;     /* Number of bytes to zero in page. */
     void *kpage;                  /* Kernel virtual page if in memory. */
+    size_t swap_slot;             /* Swap slot if in swap space. */
   };
 
 hash_hash_func hash_spte;

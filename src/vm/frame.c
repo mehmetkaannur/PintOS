@@ -1,4 +1,5 @@
 #include <debug.h>
+#include <bitmap.h>
 #include "vm/page.h"
 #include "vm/frame.h"
 #include "threads/thread.h"
@@ -6,6 +7,7 @@
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
 #include "userprog/syscall.h"
+#include "devices/swap.h"
 
 /* Frame table hash map. */
 struct hash frame_table;
@@ -90,12 +92,21 @@ evict_frame (void)
                              spte->page_read_bytes, spte->file_ofs);
               lock_release (&filesys_lock);
             }
+
+          spte->in_memory = false;
         }
       /* Write back to swap space. */
       else if (spte->evict_to == SWAP_SPACE)
         {
           /* Swap page to swap space. */
-          PANIC ("Not implemented.");
+          size_t swap_slot = swap_out (spte->user_page);
+          if (swap_slot == BITMAP_ERROR)
+            {
+              PANIC ("Failed to swap out page.");
+            }
+
+          spte->swap_slot = swap_slot;
+          spte->in_memory = false;
         }
     }
 

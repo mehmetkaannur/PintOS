@@ -143,7 +143,7 @@ get_page (const void *fault_addr, const void *esp, bool write)
   if (spte->evict_to == SWAP_SPACE)
     {
       /* Swap in the page. */
-      PANIC ("Not implemented.");
+      swap_in (spte->swap_slot, frame);
     }
   else if (spte->evict_to == FILE_SYSTEM)
     {
