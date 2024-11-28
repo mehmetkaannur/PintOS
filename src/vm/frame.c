@@ -1,9 +1,11 @@
 #include <debug.h>
+#include "vm/page.h"
 #include "vm/frame.h"
 #include "threads/thread.h"
 #include "threads/synch.h"
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
+#include "userprog/syscall.h"
 
 /* Frame table hash map. */
 struct hash frame_table;
@@ -28,6 +30,7 @@ evict_frame (void)
 
   /* Iterate frame table entries to find a frame to evict. */
   struct hash_iterator i;
+  struct frame_table_entry *f;
   hash_first (&i, &frame_table);
   while (frame == NULL)
   {
@@ -38,9 +41,7 @@ evict_frame (void)
         hash_next (&i);
       }
 
-    struct frame_table_entry *f = hash_entry (hash_cur (&i), 
-                                              struct frame_table_entry,
-                                              hash_elem);
+    f = hash_entry (hash_cur (&i), struct frame_table_entry, hash_elem);
     
     /* Iterate frame references to see if frame was accessed by any page
        referring to it. */
@@ -70,7 +71,35 @@ evict_frame (void)
   
   lock_release (&frame_table_lock);
 
-  /* Free frame being evicted, writing back page if necessary. */
+  if (!list_empty (&f->frame_references))
+    {
+      /* Write frame back based on spt entry. */
+      struct list_elem *el = list_front (&f->frame_references); 
+      struct frame_reference *fr = list_entry (el, struct frame_reference,
+                                               elem);
+      struct spt_entry *spte = get_page_from_spt (fr->upage);
+
+      /* Write back to file_system. */
+      if (spte->evict_to == FILE_SYSTEM)
+        {
+          if (pagedir_is_dirty (fr->pd, fr->upage))
+            {
+              /* Write page back to file system. */
+              lock_acquire (&filesys_lock);
+              file_write_at (spte->file, spte->user_page,
+                             spte->page_read_bytes, spte->file_ofs);
+              lock_release (&filesys_lock);
+            }
+        }
+      /* Write back to swap space. */
+      else if (spte->evict_to == SWAP_SPACE)
+        {
+          /* Swap page to swap space. */
+          PANIC ("Not implemented.");
+        }
+    }
+
+  /* Free frame being evicted,, writing back page if necessary. */
   free_frame (frame);
 
   return frame;
