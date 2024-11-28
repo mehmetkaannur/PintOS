@@ -16,25 +16,51 @@ static hash_less_func less_frame_table_entry;
 
 static void *evict_frame (void);
 
-/* Evict a frame. */
+/* Evict a frame using the 'second-chance' page replacement algorithm. */
 static void *
 evict_frame (void)
 {
+  ASSERT (!hash_empty (&frame_table));
+
   void *frame = NULL;
 
-  /* Choose frame to evict. */
   lock_acquire (&frame_table_lock);
 
-  /* Select first frame in frame table (this is random). */
+  /* Iterate frame table entries to find a frame to evict. */
   struct hash_iterator i;
   hash_first (&i, &frame_table);
-  while (hash_next (&i))
+  while (frame == NULL)
   {
+    if (hash_next (&i) == NULL)
+      {
+        /* Reached end of frame table, start again. */
+        hash_first (&i, &frame_table);
+        hash_next (&i);
+      }
+
     struct frame_table_entry *f = hash_entry (hash_cur (&i), 
                                               struct frame_table_entry,
                                               hash_elem);
-    frame = f->frame;
-    break;
+    
+    /* Iterate frame references to see if frame was accessed recently. */
+    struct list_elem *el; 
+    for (el = list_begin (&f->frame_references);
+         el != list_end (&f->frame_references);
+         el = list_next (el))
+    {
+      struct frame_reference *fr = list_entry (el, struct frame_reference,
+                                               elem);
+      if (pagedir_is_accessed (fr->pd, fr->upage))
+        {
+          pagedir_set_accessed (fr->pd, fr->upage, false);
+        }
+      else
+        {
+          /* Evict this frame. */
+          frame = f->frame;
+          break;
+        }
+    }
   }
   
   lock_release (&frame_table_lock);
