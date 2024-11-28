@@ -42,7 +42,9 @@ evict_frame (void)
                                               struct frame_table_entry,
                                               hash_elem);
     
-    /* Iterate frame references to see if frame was accessed recently. */
+    /* Iterate frame references to see if frame was accessed by any page
+       referring to it. */
+    bool accessed = false;
     struct list_elem *el; 
     for (el = list_begin (&f->frame_references);
          el != list_end (&f->frame_references);
@@ -52,15 +54,18 @@ evict_frame (void)
                                                elem);
       if (pagedir_is_accessed (fr->pd, fr->upage))
         {
+          /* Give frame a second chance. */
+          accessed = true;
           pagedir_set_accessed (fr->pd, fr->upage, false);
         }
-      else
-        {
-          /* Evict this frame. */
-          frame = f->frame;
-          break;
-        }
     }
+    
+    if (!accessed)
+      {
+        /* Evict this frame. */
+        frame = f->frame;
+        break;
+      }
   }
   
   lock_release (&frame_table_lock);
