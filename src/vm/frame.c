@@ -14,12 +14,49 @@ struct lock frame_table_lock;
 static hash_hash_func hash_frame_table_entry;
 static hash_less_func less_frame_table_entry;
 
+static void *evict_frame (void);
+
+/* Evict a frame. */
+static void *
+evict_frame (void)
+{
+  void *frame = NULL;
+
+  /* Choose frame to evict. */
+  lock_acquire (&frame_table_lock);
+
+  /* Select first frame in frame table (this is random). */
+  struct hash_iterator i;
+  hash_first (&i, &frame_table);
+  while (hash_next (&i))
+  {
+    struct frame_table_entry *f = hash_entry (hash_cur (&i), 
+                                              struct frame_table_entry,
+                                              hash_elem);
+    frame = f->frame;
+    break;
+  }
+  
+  lock_release (&frame_table_lock);
+
+  /* Free frame being evicted, writing back page if necessary. */
+  free_frame (frame);
+
+  return frame;
+}
+
 /* Get a single free frame for user page.
    Returns the kernel virtual address of this frame. */
 void *
 get_frame (enum palloc_flags flags)
 {
   void *kpage = palloc_get_page (flags);
+  
+  if (kpage == NULL)
+    {
+      /* Evict a frame. */
+      kpage = evict_frame ();
+    }
   
   struct frame_table_entry *fte = malloc (sizeof (struct frame_table_entry));
   if (fte == NULL)
