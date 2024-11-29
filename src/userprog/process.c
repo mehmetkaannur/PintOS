@@ -232,7 +232,8 @@ grow_stack (const void *uaddr, const void *esp)
 
               spte->in_memory = true;
               spte->user_page = pg_round_down (uaddr);
-              spte->evict_to = SWAP_SPACE;
+              spte->page_type = STACK;
+              spte->in_swap = false;
               spte->writable = true;
               spte->kpage = frame;
 
@@ -794,7 +795,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
           spte->in_memory = false;
           spte->user_page = upage;
-          spte->evict_to = FILE_SYSTEM;
+          spte->page_type = READ_ONLY_FILE;
+          spte->in_swap = false;
           spte->file = file;
           spte->file_ofs = curr_ofs; 
           spte->page_read_bytes = page_read_bytes;
@@ -847,7 +849,8 @@ setup_stack (void **esp)
 
           spte->in_memory = true;
           spte->user_page = upage;
-          spte->evict_to = SWAP_SPACE;
+          spte->page_type = STACK;
+          spte->in_swap = false;
           spte->writable = true;
           spte->kpage = kpage;
 

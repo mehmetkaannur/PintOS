@@ -1,8 +1,10 @@
 #include <debug.h>
 #include <bitmap.h>
+#include <stdio.h>
 #include "vm/page.h"
 #include "vm/frame.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
@@ -62,7 +64,7 @@ evict_frame (void)
           pagedir_set_accessed (fr->pd, fr->upage, false);
         }
     }
-    
+
     if (!accessed)
       {
         /* Evict this frame. */
@@ -75,42 +77,51 @@ evict_frame (void)
 
   if (!list_empty (&f->frame_references))
     {
+      /* Remove assertion when page sharing implemented. */
+      ASSERT (list_size (&f->frame_references) == 1);
+      
       /* Write frame back based on spt entry. */
       struct list_elem *el = list_front (&f->frame_references); 
       struct frame_reference *fr = list_entry (el, struct frame_reference,
                                                elem);
       struct spt_entry *spte = get_page_from_spt (fr->upage);
 
-      /* Write back to file_system. */
-      if (spte->evict_to == FILE_SYSTEM)
+      /* Write back. */
+      if (pagedir_is_dirty (fr->pd, fr->upage))
         {
-          if (pagedir_is_dirty (fr->pd, fr->upage))
+          /* Write page back to file system. */
+          if (spte->page_type == FILE)
             {
-              /* Write page back to file system. */
               lock_acquire (&filesys_lock);
-              file_write_at (spte->file, spte->user_page,
-                             spte->page_read_bytes, spte->file_ofs);
+
+              file_seek (spte->file, spte->file_ofs);
+              if (file_write (spte->file, spte->user_page,
+                              spte->page_read_bytes)
+                  != (off_t) spte->page_read_bytes)
+                {
+                  PANIC ("Failed to write page back to file system.");
+                }
+
               lock_release (&filesys_lock);
             }
-
-          spte->in_memory = false;
-        }
-      /* Write back to swap space. */
-      else if (spte->evict_to == SWAP_SPACE)
-        {
-          /* Swap page to swap space. */
-          size_t swap_slot = swap_out (spte->user_page);
-          if (swap_slot == BITMAP_ERROR)
+          else
             {
-              PANIC ("Failed to swap out page.");
-            }
+              /* Swap page to swap space. */
+              size_t swap_slot = swap_out (spte->user_page);
+              if (swap_slot == BITMAP_ERROR)
+                {
+                  PANIC ("Failed to swap out page.");
+                }
 
-          spte->swap_slot = swap_slot;
-          spte->in_memory = false;
+              spte->swap_slot = swap_slot;
+              spte->in_swap = true;
+            }
         }
+
+      spte->in_memory = false;
     }
 
-  /* Free frame being evicted,, writing back page if necessary. */
+  /* Free frame being evicted, writing back page if necessary. */
   free_frame (frame);
 
   return frame;
@@ -126,9 +137,12 @@ get_frame (enum palloc_flags flags)
   if (kpage == NULL)
     {
       /* Evict a frame. */
-      kpage = evict_frame ();
+      evict_frame ();
+      kpage = palloc_get_page (flags);
     }
   
+  ASSERT (kpage != NULL);
+
   struct frame_table_entry *fte = malloc (sizeof (struct frame_table_entry));
   if (fte == NULL)
     {

@@ -576,7 +576,7 @@ sys_mmap (void *argv[], void *esp)
         }
 
       spte->user_page = upage;
-      spte->evict_to = FILE_SYSTEM;
+      spte->page_type = FILE;
       /* Memory-mapped files are writable by default. */
       spte->writable = true;
       spte->file = file;
@@ -584,6 +584,7 @@ sys_mmap (void *argv[], void *esp)
       spte->page_read_bytes = read_bytes;
       spte->page_zero_bytes = zero_bytes;
       spte->in_memory = false;
+      spte->in_swap = false;
 
       hash_insert (&t->supp_page_table, &spte->elem);
 
