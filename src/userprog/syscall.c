@@ -49,9 +49,11 @@ static void syscall_handler (struct intr_frame *);
 
 typedef void *(*syscall_func_t) (void *argv[], void *esp);
 
-static void validate_user_pointer (const void *uaddr, void *esp);
-static void validate_user_string (const char *uaddr, int max_len, void *esp);
-static void validate_user_data (const void *uaddr, unsigned size, void *esp);
+static void validate_user_pointer (const void *uaddr, void *esp, bool write);
+static void validate_user_string (const char *uaddr, int max_len, void *esp,
+                                  bool write);
+static void validate_user_data (const void *uaddr, unsigned size, void *esp,
+                                bool write);
 
 /* Entry with information on how to handle syscall. */
 struct syscall_info
@@ -88,7 +90,7 @@ static struct syscall_info syscall_table[] = {
 /* Checks if the pointer given by the user is a valid pointer
    and terminates user process if not. */
 static void
-validate_user_pointer (const void *uaddr, void *esp)
+validate_user_pointer (const void *uaddr, void *esp, bool write)
 {
   struct thread *t = thread_current ();
   
@@ -97,25 +99,30 @@ validate_user_pointer (const void *uaddr, void *esp)
     {
       thread_exit ();
     }
-  
+
   /* Check if uaddr is unmapped virtual memory. */
   if (pagedir_get_page (t->pagedir, uaddr) == NULL)
     {
       /* Try to load page in. */
-      if (!get_page (uaddr, esp, false))
+      if (!get_page (uaddr, esp, write))
         {
           thread_exit ();
         }
+    }
+  
+  if (write && !pagedir_is_writable (t->pagedir, uaddr))
+    {
+      thread_exit ();
     }
 }
 
 /* Validate a string UADDR provided by user with max length MAX_LEN. */
 static void
-validate_user_string (const char *uaddr, int max_len, void *esp)
+validate_user_string (const char *uaddr, int max_len, void *esp, bool write)
 {
   for (int i = 0; i < max_len; i++)
     {
-      validate_user_pointer (uaddr + i, esp);
+      validate_user_pointer (uaddr + i, esp, write);
       if (uaddr[i] == '\0')
         {
           return;
@@ -126,7 +133,7 @@ validate_user_string (const char *uaddr, int max_len, void *esp)
 
 /* Validates user data of given size. */
 static void
-validate_user_data (const void *uaddr, unsigned size, void *esp)
+validate_user_data (const void *uaddr, unsigned size, void *esp, bool write)
 {
   uintptr_t ptr = (uintptr_t) uaddr;
   const uintptr_t end = ptr + size;
@@ -134,7 +141,7 @@ validate_user_data (const void *uaddr, unsigned size, void *esp)
   while (ptr < end)
     {
       /* Check if user-provided pointer is valid. */
-      validate_user_pointer ((void *) ptr, esp);
+      validate_user_pointer ((void *) ptr, esp, write);
 
       /* Advance to next page boundary or end. */
       page_boundary += PGSIZE;
@@ -192,7 +199,7 @@ static void
 syscall_handler (struct intr_frame *f) 
 {
   /* Get info for handling syscall based on syscall_number. */
-  validate_user_data (f->esp, WORD_SIZE, f->esp);
+  validate_user_data (f->esp, WORD_SIZE, f->esp, false);
   int syscall_number = *(int *) f->esp;
   int syscall_entries = sizeof (syscall_table) / sizeof (struct syscall_info);
   if (syscall_number < 0 || syscall_number >= syscall_entries)
@@ -205,7 +212,7 @@ syscall_handler (struct intr_frame *f)
   void *argv[info.argc];
   for (int i = 0; i < info.argc; i++) 
     {
-      validate_user_data ((int *) f->esp + i + 1, WORD_SIZE, f->esp);
+      validate_user_data ((int *) f->esp + i + 1, WORD_SIZE, f->esp, false);
       argv[i] = (void *) *((int *) f->esp + i + 1);
     }
 
@@ -241,7 +248,7 @@ static pid_t
 sys_exec (void *argv[], void *esp)
 {
   const char *cmd_line = (const char *) argv[0];
-  validate_user_string (cmd_line, PGSIZE, esp);
+  validate_user_string (cmd_line, PGSIZE, esp, false);
   
   tid_t tid = process_execute (cmd_line);
 
@@ -283,7 +290,7 @@ sys_create (void *argv[], void *esp)
   unsigned initial_size = (unsigned) argv[1];
   
   /* Check if file name is valid. */
-  validate_user_data (file, READDIR_MAX_LEN, esp);
+  validate_user_data (file, READDIR_MAX_LEN, esp, false);
   
   /* Create file in file system. */
   lock_acquire (&filesys_lock);
@@ -300,7 +307,7 @@ sys_remove (void *argv[], void *esp)
   const char *file = (const char *) argv[0];
 
   /* Check if file name is valid. */
-  validate_user_data (file, READDIR_MAX_LEN, esp);
+  validate_user_data (file, READDIR_MAX_LEN, esp, false);
 
   /* Remove file from file system. */
   lock_acquire (&filesys_lock);
@@ -317,7 +324,7 @@ sys_open (void *argv[], void *esp)
   const char *file_name = (const char *) argv[0];
 
   /* Check if file name is valid. */
-  validate_user_string (file_name, READDIR_MAX_LEN, esp);
+  validate_user_string (file_name, READDIR_MAX_LEN, esp, false);
 
   /* Open file in file system. */
   lock_acquire (&filesys_lock);
@@ -376,7 +383,7 @@ sys_read (void *argv[], void *esp)
   unsigned size = (unsigned) argv[2];
 
   /* Check if buffer is valid. */
-  validate_user_data (buffer, size, esp);
+  validate_user_data (buffer, size, esp, true);
 
   if (fd == STDIN_FILENO) 
     {
@@ -412,7 +419,7 @@ sys_write (void *argv[], void *esp)
   unsigned size = (unsigned) argv[2];
   
   /* Check if buffer is valid. */
-  validate_user_data (buffer, size, esp);
+  validate_user_data (buffer, size, esp, false);
 
   if (fd == STDOUT_FILENO)
     {
@@ -503,7 +510,7 @@ sys_close (void *argv[], void *esp UNUSED)
 }
 
 static mapid_t
-sys_mmap (void *argv[], void *esp)
+sys_mmap (void *argv[], void *esp UNUSED)
 {
   int fd = (int) argv[0];
   void *addr = argv[1];
