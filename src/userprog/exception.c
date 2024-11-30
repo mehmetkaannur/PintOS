@@ -12,6 +12,7 @@
 #include "vm/page.h"
 #include "vm/frame.h"
 #include "userprog/process.h"
+#include "devices/swap.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -140,12 +141,13 @@ get_page (const void *fault_addr, const void *esp, bool write)
   void *frame = get_frame (PAL_USER);
 
   /* Fetch data into frame. */
-  if (spte->evict_to == SWAP_SPACE)
+  if (spte->in_swap)
     {
       /* Swap in the page. */
-      PANIC ("Not implemented.");
+      swap_in (frame, spte->swap_slot);
+      spte->in_swap = false;
     }
-  else if (spte->evict_to == FILE_SYSTEM)
+  else
     {
       /* Load the page from the file system. */
       if (spte->page_read_bytes != 0)

@@ -8,6 +8,7 @@
 #include "userprog/syscall.h"
 #include "userprog/pagedir.h"
 #include "filesys/file.h"
+#include "devices/swap.h"
 
 /* Hash function for supplemental page table entry. */
 unsigned
@@ -36,7 +37,7 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
   if (spte->in_memory)
     {
       /* Write page back to file system, if dirty. */ 
-      if ((spte->evict_to == FILE_SYSTEM)
+      if ((spte->page_type == FILE)
           && pagedir_is_dirty (thread_current ()->pagedir, spte->user_page))
         {
           lock_acquire (&filesys_lock);
@@ -47,10 +48,10 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
 
       free_frame (spte->kpage);
     }
-  else if (spte->evict_to == SWAP_SPACE)
+  else if (spte->in_swap)
     {
       /* Remove page from swap space. */
-      PANIC ("Not implemented.");
+      swap_drop (spte->swap_slot);
     }
 
   free (spte);

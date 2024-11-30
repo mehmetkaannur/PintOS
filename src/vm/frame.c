@@ -1,9 +1,15 @@
 #include <debug.h>
+#include <bitmap.h>
+#include <stdio.h>
+#include "vm/page.h"
 #include "vm/frame.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
+#include "userprog/syscall.h"
+#include "devices/swap.h"
 
 /* Frame table hash map. */
 struct hash frame_table;
@@ -14,6 +20,113 @@ struct lock frame_table_lock;
 static hash_hash_func hash_frame_table_entry;
 static hash_less_func less_frame_table_entry;
 
+static void *evict_frame (void);
+
+/* Evict a frame using the 'second-chance' page replacement algorithm. */
+static void *
+evict_frame (void)
+{
+  ASSERT (!hash_empty (&frame_table));
+
+  void *frame = NULL;
+
+  lock_acquire (&frame_table_lock);
+
+  /* Iterate frame table entries to find a frame to evict. */
+  struct hash_iterator i;
+  struct frame_table_entry *f;
+  hash_first (&i, &frame_table);
+  while (frame == NULL)
+  {
+    if (hash_next (&i) == NULL)
+      {
+        /* Reached end of frame table, start again. */
+        hash_first (&i, &frame_table);
+        hash_next (&i);
+      }
+
+    f = hash_entry (hash_cur (&i), struct frame_table_entry, hash_elem);
+    
+    /* Iterate frame references to see if frame was accessed by any page
+       referring to it. */
+    bool accessed = false;
+    struct list_elem *el; 
+    for (el = list_begin (&f->frame_references);
+         el != list_end (&f->frame_references);
+         el = list_next (el))
+    {
+      struct frame_reference *fr = list_entry (el, struct frame_reference,
+                                               elem);
+      if (pagedir_is_accessed (fr->pd, fr->upage))
+        {
+          /* Give frame a second chance. */
+          accessed = true;
+          pagedir_set_accessed (fr->pd, fr->upage, false);
+        }
+    }
+
+    if (!accessed)
+      {
+        /* Evict this frame. */
+        frame = f->frame;
+        break;
+      }
+  }
+  
+  lock_release (&frame_table_lock);
+
+  if (!list_empty (&f->frame_references))
+    {
+      /* Remove assertion when page sharing implemented. */
+      ASSERT (list_size (&f->frame_references) == 1);
+      
+      /* Write frame back based on spt entry. */
+      struct list_elem *el = list_front (&f->frame_references); 
+      struct frame_reference *fr = list_entry (el, struct frame_reference,
+                                               elem);
+      struct spt_entry *spte = get_page_from_spt (fr->upage);
+
+      if (spte->page_type == FILE)
+        {
+          if (pagedir_is_dirty (fr->pd, fr->upage))
+            {
+              lock_acquire (&filesys_lock);
+
+              /* Write page back to file system. */
+              file_seek (spte->file, spte->file_ofs);
+              if (file_write (spte->file, spte->user_page,
+                              spte->page_read_bytes)
+                  != (off_t) spte->page_read_bytes)
+                {
+                  PANIC ("Failed to write page back to file system.");
+                }
+
+              lock_release (&filesys_lock);
+            }
+        }
+      else
+        {
+          /* Swap page to swap space. */
+          size_t swap_slot = swap_out (spte->user_page);
+          if (swap_slot == BITMAP_ERROR)
+            {
+              PANIC ("Failed to swap out page.");
+            }
+
+          spte->swap_slot = swap_slot;
+          spte->in_swap = true;
+        }
+
+
+      spte->in_memory = false;
+    }
+
+  /* Free frame being evicted, writing back page if necessary. */
+  free_frame (frame);
+
+  return frame;
+}
+
 /* Get a single free frame for user page.
    Returns the kernel virtual address of this frame. */
 void *
@@ -21,6 +134,15 @@ get_frame (enum palloc_flags flags)
 {
   void *kpage = palloc_get_page (flags);
   
+  if (kpage == NULL)
+    {
+      /* Evict a frame. */
+      evict_frame ();
+      kpage = palloc_get_page (flags);
+    }
+  
+  ASSERT (kpage != NULL);
+
   struct frame_table_entry *fte = malloc (sizeof (struct frame_table_entry));
   if (fte == NULL)
     {
