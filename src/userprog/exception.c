@@ -12,6 +12,7 @@
 #include "vm/page.h"
 #include "vm/frame.h"
 #include "userprog/process.h"
+#include "devices/swap.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;

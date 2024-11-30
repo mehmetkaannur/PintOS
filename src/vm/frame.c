@@ -86,14 +86,13 @@ evict_frame (void)
                                                elem);
       struct spt_entry *spte = get_page_from_spt (fr->upage);
 
-      /* Write back. */
-      if (pagedir_is_dirty (fr->pd, fr->upage))
+      if (spte->page_type == FILE)
         {
-          /* Write page back to file system. */
-          if (spte->page_type == FILE)
+          if (pagedir_is_dirty (fr->pd, fr->upage))
             {
               lock_acquire (&filesys_lock);
 
+              /* Write page back to file system. */
               file_seek (spte->file, spte->file_ofs);
               if (file_write (spte->file, spte->user_page,
                               spte->page_read_bytes)
@@ -104,19 +103,20 @@ evict_frame (void)
 
               lock_release (&filesys_lock);
             }
-          else
-            {
-              /* Swap page to swap space. */
-              size_t swap_slot = swap_out (spte->user_page);
-              if (swap_slot == BITMAP_ERROR)
-                {
-                  PANIC ("Failed to swap out page.");
-                }
-
-              spte->swap_slot = swap_slot;
-              spte->in_swap = true;
-            }
         }
+      else
+        {
+          /* Swap page to swap space. */
+          size_t swap_slot = swap_out (spte->user_page);
+          if (swap_slot == BITMAP_ERROR)
+            {
+              PANIC ("Failed to swap out page.");
+            }
+
+          spte->swap_slot = swap_slot;
+          spte->in_swap = true;
+        }
+
 
       spte->in_memory = false;
     }
