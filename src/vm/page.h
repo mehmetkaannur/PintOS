@@ -4,11 +4,14 @@
 #include <hash.h>
 #include "filesys/off_t.h"
 
-/* Possible states of a page not in memory, recorded in SPT. */
-enum evict_location
+/* Possible types of page, recorded in SPT. */
+enum page_type
   {
-    SWAP_SPACE,                   /* Page is in swap space. */
-    FILE_SYSTEM,                  /* Page is in file system. */
+    STACK,             /* Stack page, written to swap space on eviction. */
+    FILE,              /* File-backed page (e.g. from a memory mapped file),
+                          written back to file system on eviction. */
+    READ_ONLY_FILE,    /* Page from a read-only file (e.g. executable
+                          data page), written to swap space on eviction. */
   };
 
 /* Supplemental page table (SPT) entry. */
@@ -18,13 +21,15 @@ struct spt_entry
                                      supplemental page table. */
     bool in_memory;               /* Indicates if page is in memory. */
     uint8_t *user_page;           /* User virtual page. */
-    enum evict_location evict_to; /* Where the page should be if evicted. */
+    enum page_type page_type;     /* What type of page this wrt eviction. */
     bool writable;                /* Indicates if page is writable. */
     struct file *file;            /* Pointer to file for page. */
     uint32_t file_ofs;            /* Offset in file to read data from. */
     uint32_t page_read_bytes;     /* Number of bytes to read from file. */
     uint32_t page_zero_bytes;     /* Number of bytes to zero in page. */
     void *kpage;                  /* Kernel virtual page if in memory. */
+    size_t swap_slot;             /* Swap slot if in swap space. */
+    bool in_swap;                 /* Indicates if page is in swap space. */
   };
 
 hash_hash_func hash_spte;
