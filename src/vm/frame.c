@@ -77,9 +77,9 @@ evict_frame (void)
 
   if (!list_empty (&f->frame_references))
     {
-      /* Remove assertion when page sharing implemented. */
-      ASSERT (list_size (&f->frame_references) == 1);
-      
+      size_t swap_slot;
+      bool swapped = false;
+ 
       /* Write frame back based on spt entry. */
       struct list_elem *el = list_front (&f->frame_references); 
       struct frame_reference *fr = list_entry (el, struct frame_reference,
@@ -107,18 +107,34 @@ evict_frame (void)
       else
         {
           /* Swap page to swap space. */
-          size_t swap_slot = swap_out (spte->user_page);
+          swap_slot = swap_out (spte->user_page);
           if (swap_slot == BITMAP_ERROR)
             {
               PANIC ("Failed to swap out page.");
             }
-
-          spte->swap_slot = swap_slot;
-          spte->in_swap = true;
+          swapped = true;
         }
 
+        /* Update spt entries for all references to frame. */
+        struct list_elem *e;
+        for (e = list_begin (&f->frame_references);
+             e != list_end (&f->frame_references);
+             e = list_next (e))
+          {
+            struct frame_reference *fr = list_entry (e,
+                                                     struct frame_reference,
+                                                     elem);
+            struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
 
-      spte->in_memory = false;
+            if (swapped)
+              {
+                spte->swap_slot = swap_slot;
+                spte->in_swap = true;
+              }
+
+            spte->in_memory = false;
+          }
+
     }
 
   /* Free frame being evicted, writing back page if necessary. */

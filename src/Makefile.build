@@ -65,6 +65,7 @@ userprog_SRC += userprog/tss.c		# TSS management.
 vm_SRC += devices/swap.c		# Swap block manager.
 vm_SRC += vm/frame.c            # Frame table.
 vm_SRC += vm/page.c			    # Supplemental page table.
+vm_SRC += vm/shared_page.c      # Shared page hash map.
 
 # Filesystem code.
 filesys_SRC  = filesys/filesys.c	# Filesystem core.
