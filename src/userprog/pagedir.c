@@ -7,6 +7,7 @@
 #include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/malloc.h"
+#include "threads/thread.h"
 #include "vm/frame.h"
 
 static uint32_t *active_pd (void);
