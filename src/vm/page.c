@@ -58,7 +58,7 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
 }
 
 struct spt_entry *
-get_page_from_spt (void *upage, struct thread *t)
+get_spt_entry (void *upage, struct thread *t)
 {
   struct spt_entry temp_spte;
   temp_spte.user_page = pg_round_down (upage);
