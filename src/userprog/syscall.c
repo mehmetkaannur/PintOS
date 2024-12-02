@@ -642,37 +642,31 @@ sys_munmap (void *argv[], void *esp UNUSED)
 }
 
 static bool
-sys_chdir (void *argv[], void *esp UNUSED)
+sys_chdir (void *argv[] UNUSED, void *esp UNUSED)
 {
-  const char *dir = (const char *) argv[0];
   return false;
 }
 
 static bool
-sys_mkdir (void *argv[], void *esp UNUSED)
+sys_mkdir (void *argv[] UNUSED, void *esp UNUSED)
 {
-  const char *dir = (const char *) argv[0];
   return false;
 }
 
 static bool
-sys_readdir (void *argv[], void *esp UNUSED)
+sys_readdir (void *argv[] UNUSED, void *esp UNUSED)
 {
-  int fd = (int) argv[0];
-  char *name = (char *) argv[1];
   return false;
 }
 
 static bool
-sys_isdir (void *argv[], void *esp UNUSED)
+sys_isdir (void *argv[] UNUSED, void *esp UNUSED)
 {
-  int fd = (int) argv[0];
   return false;
 }
 
 static int
-sys_inumber (void *argv[], void *esp UNUSED)
+sys_inumber (void *argv[] UNUSED, void *esp UNUSED)
 {
-  int fd = (int) argv[0];
   return 0;
 }
