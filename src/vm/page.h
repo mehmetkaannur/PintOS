@@ -3,6 +3,7 @@
 
 #include <hash.h>
 #include "filesys/off_t.h"
+#include "threads/thread.h"
 
 /* Possible types of page, recorded in SPT. */
 enum page_type
@@ -20,22 +21,22 @@ struct spt_entry
     struct hash_elem elem;        /* Hash element for thread's
                                      supplemental page table. */
     bool in_memory;               /* Indicates if page is in memory. */
+    bool in_swap;                 /* Indicates if page is in swap space. */
     uint8_t *user_page;           /* User virtual page. */
-    enum page_type page_type;     /* What type of page this wrt eviction. */
+    void *kpage;                  /* Kernel virtual page if in memory. */
+    enum page_type page_type;     /* Type of page wrt. eviction. */
     bool writable;                /* Indicates if page is writable. */
     struct file *file;            /* Pointer to file for page. */
     uint32_t file_ofs;            /* Offset in file to read data from. */
     uint32_t page_read_bytes;     /* Number of bytes to read from file. */
     uint32_t page_zero_bytes;     /* Number of bytes to zero in page. */
-    void *kpage;                  /* Kernel virtual page if in memory. */
     size_t swap_slot;             /* Swap slot if in swap space. */
-    bool in_swap;                 /* Indicates if page is in swap space. */
   };
 
 hash_hash_func hash_spte;
 hash_less_func less_spte;
 hash_action_func destroy_spte;
-struct spt_entry * get_page_from_spt (void *upage);
+struct spt_entry *get_spt_entry (void *upage, struct thread *t);
 void remove_page_from_spt (void *upage);
 
 #endif /* vm/page.h */

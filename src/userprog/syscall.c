@@ -177,7 +177,7 @@ check_overlap (void *addr, size_t length)
 
   while (size > 0) 
     {
-      if (pagedir_get_page (t->pagedir, upage) != NULL || get_page_from_spt (upage) != NULL)
+      if (get_spt_entry (upage, t) != NULL)
         {
           return true; /* Overlaps with existing mapping */
         }
@@ -628,7 +628,7 @@ sys_munmap (void *argv[], void *esp UNUSED)
       size_t page_read_bytes = length < PGSIZE ? length : PGSIZE;
       void *upage = addr + offset;
       
-      struct spt_entry *spte = get_page_from_spt (upage);
+      struct spt_entry *spte = get_spt_entry (upage, t);
       hash_delete (&t->supp_page_table, &spte->elem);
       destroy_spte (&spte->elem, NULL);
       
@@ -642,37 +642,31 @@ sys_munmap (void *argv[], void *esp UNUSED)
 }
 
 static bool
-sys_chdir (void *argv[], void *esp UNUSED)
+sys_chdir (void *argv[] UNUSED, void *esp UNUSED)
 {
-  const char *dir = (const char *) argv[0];
   return false;
 }
 
 static bool
-sys_mkdir (void *argv[], void *esp UNUSED)
+sys_mkdir (void *argv[] UNUSED, void *esp UNUSED)
 {
-  const char *dir = (const char *) argv[0];
   return false;
 }
 
 static bool
-sys_readdir (void *argv[], void *esp UNUSED)
+sys_readdir (void *argv[] UNUSED, void *esp UNUSED)
 {
-  int fd = (int) argv[0];
-  char *name = (char *) argv[1];
   return false;
 }
 
 static bool
-sys_isdir (void *argv[], void *esp UNUSED)
+sys_isdir (void *argv[] UNUSED, void *esp UNUSED)
 {
-  int fd = (int) argv[0];
   return false;
 }
 
 static int
-sys_inumber (void *argv[], void *esp UNUSED)
+sys_inumber (void *argv[] UNUSED, void *esp UNUSED)
 {
-  int fd = (int) argv[0];
   return 0;
 }

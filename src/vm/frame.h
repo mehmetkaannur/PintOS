@@ -9,6 +9,7 @@ struct frame_reference
     uint32_t *pd;             /* Page directory of thread which has
                                  reference to frame. */
     void *upage;              /* User virtual address of page in frame. */
+    struct thread *owner;     /* Thread which owns page. */
     struct list_elem elem;    /* List element for frame table entry. */
   };
 
