@@ -34,6 +34,7 @@
 #ifdef VM
 #include "devices/swap.h"
 #include "vm/frame.h"
+#include "vm/shared_page.h"
 #endif
 #ifdef FILESYS
 #include "devices/block.h"
@@ -103,6 +104,7 @@ main (void)
   malloc_init ();
   paging_init ();
   frame_table_init ();
+  shared_pages_init ();
 
   /* Segmentation. */
 #ifdef USERPROG

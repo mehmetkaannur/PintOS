@@ -11,8 +11,8 @@ enum page_type
     STACK,             /* Stack page, written to swap space on eviction. */
     FILE,              /* File-backed page (e.g. from a memory mapped file),
                           written back to file system on eviction. */
-    READ_ONLY_FILE,    /* Page from a read-only file (e.g. executable
-                          data page), written to swap space on eviction. */
+    EXEC_FILE,         /* Page from an executable file, written to the swap
+                          space on eviction. */
   };
 
 /* Supplemental page table (SPT) entry. */
