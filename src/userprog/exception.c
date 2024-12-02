@@ -11,6 +11,7 @@
 #include "userprog/process.h"
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "vm/shared_page.h"
 #include "userprog/process.h"
 #include "devices/swap.h"
 
@@ -137,35 +138,50 @@ get_page (const void *fault_addr, const void *esp, bool write)
       return false;
     }
 
-  /* Obtain a frame to store the page. */
-  void *frame = get_frame (PAL_USER);
+  /* If the page is read-only from a file, check if already in . */
+  void *frame = (spte->page_type == READ_ONLY_FILE) 
+              ? shared_pages_lookup (spte->file, spte->file_ofs)
+              : NULL;
 
-  /* Fetch data into frame. */
-  if (spte->in_swap)
+  if (frame == NULL)
     {
-      /* Swap in the page. */
-      swap_in (frame, spte->swap_slot);
-      spte->in_swap = false;
-    }
-  else
-    {
-      /* Load the page from the file system. */
-      if (spte->page_read_bytes != 0)
+      /* Obtain a frame to store the page. */
+      frame = get_frame (PAL_USER);
+
+      /* Fetch data into frame. */
+      if (spte->in_swap)
         {
-          lock_acquire (&filesys_lock);
-          file_seek (spte->file, spte->file_ofs);
-          if (file_read (spte->file, frame, spte->page_read_bytes)
-              != (int) spte->page_read_bytes)
+          /* Swap in the page. */
+          swap_in (frame, spte->swap_slot);
+          spte->in_swap = false;
+        }
+      else
+        {
+          /* Load the page from the file system. */
+          if (spte->page_read_bytes != 0)
             {
-              free_frame (frame);
+              lock_acquire (&filesys_lock);
+              file_seek (spte->file, spte->file_ofs);
+              if (file_read (spte->file, frame, spte->page_read_bytes)
+                  != (int) spte->page_read_bytes)
+                {
+                  free_frame (frame);
+                  lock_release (&filesys_lock);
+                  PANIC ("Failed to read file into frame.");
+                }
               lock_release (&filesys_lock);
-              PANIC ("Failed to read file into frame.");
             }
-          lock_release (&filesys_lock);
+
+          /* Zero required number of bytes in page.*/
+          memset (frame + spte->page_read_bytes, 0, spte->page_zero_bytes);
+
+          if (spte->page_type == READ_ONLY_FILE)
+            {
+              /* Add page to shared pages hash map. */
+              shared_pages_insert (spte->file, spte->file_ofs, frame);
+            }
         }
 
-      /* Zero required number of bytes in page.*/
-      memset (frame + spte->page_read_bytes, 0, spte->page_zero_bytes);
     }
 
   /* Point page table entry for faulting address to frame. */

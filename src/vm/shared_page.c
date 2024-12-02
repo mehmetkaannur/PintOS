@@ -89,14 +89,7 @@ shared_pages_insert (struct file *file, off_t offset, void *frame)
 	struct hash_elem *existing = hash_insert (&shared_pages,
                                             &new_entry->hash_elem);
 	lock_release (&shared_pages_lock);
-
-	if (existing != NULL)
-		{
-			/* An entry already exists; do not insert */
-			free (new_entry);
-			return false;
-		}
-
+	
 	return true;
 }
 

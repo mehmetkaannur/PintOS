@@ -9,6 +9,7 @@
 #include "userprog/pagedir.h"
 #include "filesys/file.h"
 #include "devices/swap.h"
+#include "vm/shared_page.h"
 
 /* Hash function for supplemental page table entry. */
 unsigned
@@ -44,6 +45,12 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
           file_write_at (spte->file, spte->user_page, spte->page_read_bytes,
                          spte->file_ofs);
           lock_release (&filesys_lock);
+        }
+
+      if (spte->page_type == READ_ONLY_FILE)
+        {
+          /* Remove page from shared pages hash map. */
+          shared_pages_remove (spte->file, spte->file_ofs);
         }
 
       free_frame (spte->kpage);

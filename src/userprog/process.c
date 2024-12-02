@@ -24,6 +24,7 @@
 #include "userprog/syscall.h"
 #include "vm/frame.h"
 #include "vm/page.h"
+#include "vm/shared_page.h"
 
 /* Maximum stack size of 8MB.*/
 #define MAX_STACK_SIZE (1 << 23)

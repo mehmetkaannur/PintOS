@@ -184,6 +184,14 @@ free_frame (void *kpage)
     {
       struct frame_reference *fr = list_entry (el, struct frame_reference,
                                                elem);
+
+      /* Update spt entries for other thread's pages referencing frame. */
+      struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
+      if (spte != NULL)
+        {
+          spte->in_memory = false;
+        }
+
       pagedir_clear_page (fr->pd, fr->upage);
       el = list_remove (el);
       free (fr);
