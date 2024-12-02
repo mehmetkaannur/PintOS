@@ -796,7 +796,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
           spte->in_memory = false;
           spte->user_page = upage;
-          spte->page_type = READ_ONLY_FILE;
+          spte->page_type = EXEC_FILE;
           spte->in_swap = false;
           spte->file = file;
           spte->file_ofs = curr_ofs; 

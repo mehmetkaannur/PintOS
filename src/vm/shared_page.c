@@ -86,8 +86,7 @@ shared_pages_insert (struct file *file, off_t offset, void *frame)
 	new_entry->frame = frame;
 
 	lock_acquire (&shared_pages_lock);
-	struct hash_elem *existing = hash_insert (&shared_pages,
-                                            &new_entry->hash_elem);
+	hash_insert (&shared_pages, &new_entry->hash_elem);
 	lock_release (&shared_pages_lock);
 	
 	return true;

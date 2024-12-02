@@ -47,7 +47,7 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
           lock_release (&filesys_lock);
         }
 
-      if (spte->page_type == READ_ONLY_FILE)
+      if (spte->page_type == EXEC_FILE)
         {
           /* Remove page from shared pages hash map. */
           shared_pages_remove (spte->file, spte->file_ofs);

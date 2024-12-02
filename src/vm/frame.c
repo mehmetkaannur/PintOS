@@ -26,6 +26,7 @@ static void *evict_frame (void);
 static void *
 evict_frame (void)
 {
+  PANIC ("Eviction not implemented.");
   ASSERT (!hash_empty (&frame_table));
 
   void *frame = NULL;

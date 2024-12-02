@@ -115,6 +115,8 @@ kill (struct intr_frame *f)
     }
 }
 
+/* Try to fetch page for faulting address.
+   Returns true if successfully got page and false otherwise. */
 bool
 get_page (const void *fault_addr, const void *esp, bool write)
 {
@@ -139,10 +141,10 @@ get_page (const void *fault_addr, const void *esp, bool write)
     }
 
   /* If the page is read-only from a file, check if already in . */
-  void *frame = (spte->page_type == READ_ONLY_FILE) 
+  void *frame = (spte->page_type == EXEC_FILE && !spte->writable) 
               ? shared_pages_lookup (spte->file, spte->file_ofs)
               : NULL;
-
+  
   if (frame == NULL)
     {
       /* Obtain a frame to store the page. */
@@ -175,7 +177,7 @@ get_page (const void *fault_addr, const void *esp, bool write)
           /* Zero required number of bytes in page.*/
           memset (frame + spte->page_read_bytes, 0, spte->page_zero_bytes);
 
-          if (spte->page_type == READ_ONLY_FILE)
+          if (spte->page_type == EXEC_FILE && !spte->writable)
             {
               /* Add page to shared pages hash map. */
               shared_pages_insert (spte->file, spte->file_ofs, frame);
