@@ -122,6 +122,7 @@ pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
         return false;
       fr->pd = pd;
       fr->upage = upage;
+      fr->owner = thread_current ();
       
       /* Update frame references list for frame in frame table. */
       lock_acquire (&frame_table_lock);

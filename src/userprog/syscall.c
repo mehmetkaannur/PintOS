@@ -177,7 +177,7 @@ check_overlap (void *addr, size_t length)
 
   while (size > 0) 
     {
-      if (pagedir_get_page (t->pagedir, upage) != NULL || get_page_from_spt (upage) != NULL)
+      if (get_page_from_spt (upage, t) != NULL)
         {
           return true; /* Overlaps with existing mapping */
         }
@@ -628,7 +628,7 @@ sys_munmap (void *argv[], void *esp UNUSED)
       size_t page_read_bytes = length < PGSIZE ? length : PGSIZE;
       void *upage = addr + offset;
       
-      struct spt_entry *spte = get_page_from_spt (upage);
+      struct spt_entry *spte = get_page_from_spt (upage, t);
       hash_delete (&t->supp_page_table, &spte->elem);
       destroy_spte (&spte->elem, NULL);
       

@@ -3,6 +3,7 @@
 
 #include <hash.h>
 #include "filesys/off_t.h"
+#include "threads/thread.h"
 
 /* Possible types of page, recorded in SPT. */
 enum page_type
@@ -35,7 +36,7 @@ struct spt_entry
 hash_hash_func hash_spte;
 hash_less_func less_spte;
 hash_action_func destroy_spte;
-struct spt_entry * get_page_from_spt (void *upage);
+struct spt_entry *get_page_from_spt (void *upage, struct thread *t);
 void remove_page_from_spt (void *upage);
 
 #endif /* vm/page.h */
