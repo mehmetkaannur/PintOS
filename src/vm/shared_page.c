@@ -2,95 +2,78 @@
 #include <string.h>
 #include "threads/malloc.h"
 
+/* Shared pages hash map */
+static struct hash shared_pages;
+
 /* Hash function for shared_page_key */
 static unsigned
-hash_shared_page_key (const struct hash_elem *e, void *aux UNUSED)
+hash_shared_page_entry (const struct hash_elem *e, void *aux UNUSED)
 {
-	const struct shared_page_entry *entry = hash_entry (e, struct shared_page_entry, 
-																											hash_elem);
-	unsigned hash = hash_bytes (&entry->key, sizeof (entry->key));
-	return hash;
+	struct shared_page_entry *spte = hash_entry (e, struct shared_page_entry,
+				                                     	 hash_elem);
+	return file_hash (spte->file) ^ hash_int (spte->offset);
 }
 
 /* Comparison function for shared_page_key */
 static bool
-less_shared_page_key (const struct hash_elem *a, const struct hash_elem *b, 
-											void *aux UNUSED)
+less_shared_page_entry (const struct hash_elem *a, const struct hash_elem *b, 
+											  void *aux UNUSED)
 {
-	const struct shared_page_entry *entry_a = hash_entry (a, struct shared_page_entry, 
-																												hash_elem);
-	const struct shared_page_entry *entry_b = hash_entry (b, struct shared_page_entry, 
-																												hash_elem);
+	struct shared_page_entry *entry_a = hash_entry (a, struct shared_page_entry,
+																								  hash_elem);
+	struct shared_page_entry *entry_b = hash_entry (b, struct shared_page_entry, 
+																									hash_elem);
 
-	if (entry_a->key.file < entry_b->key.file)
+	if (entry_a->file < entry_b->file)
 		{
 			return true;
 		}
-	else if (entry_a->key.file > entry_b->key.file)
+	
+	if (entry_a->file > entry_b->file)
 		{
 			return false;
 		}
-	else
-		{
-			return entry_a->key.offset < entry_b->key.offset;
-		}
-}
 
-/* Hash function for frame_table_entry */
-unsigned
-hash_frame_table_entry (const struct hash_elem *e, void *aux UNUSED)
-{
-    const struct frame_table_entry *fte = hash_entry (e, struct frame_table_entry, 
-																											hash_elem);
-    return hash_bytes (&fte->frame, sizeof (fte->frame));
+	return entry_a->offset < entry_b->offset;
 }
-
-/* Less function for frame_table_entry */
-bool
-less_frame_table_entry (const struct hash_elem *a, const struct hash_elem *b, 
-												void *aux UNUSED)
-{
-	const struct frame_table_entry *fte_a = hash_entry (a, struct frame_table_entry, 
-																											hash_elem);
-	const struct frame_table_entry *fte_b = hash_entry (b, struct frame_table_entry, 
-																											hash_elem);
-	return fte_a->frame < fte_b->frame;
-}
-
-/* Shared pages hash map */
-static struct hash shared_pages;
 
 /* Initialize shared pages hash map */
 void
 shared_pages_init (void)
 {
-    hash_init (&shared_pages, hash_shared_page_key, less_shared_page_key, NULL);
+  hash_init (&shared_pages, hash_shared_page_entry,
+						 less_shared_page_entry, NULL);
+	lock_init (&shared_pages_lock);
 }
 
-/* Lookup a shared page; returns frame_table_entry if found, else NULL */
-struct frame_table_entry *
+/* Lookup a shared page; returns pointer to the frame if found, else NULL */
+void *
 shared_pages_lookup (struct file *file, off_t offset)
 {
 	struct shared_page_entry temp;
-	temp.key.file = file;
-	temp.key.offset = offset;
+	temp.file = file;
+	temp.offset = offset;
 
-	// lock_acquire(&frame_table_lock);
+	lock_acquire (&shared_pages_lock);
+
 	struct hash_elem *e = hash_find (&shared_pages, &temp.hash_elem);
-	struct frame_table_entry *fte = NULL;
+	struct frame *frame = NULL;
 	if (e != NULL)
 		{
-			struct shared_page_entry *entry = hash_entry (e, struct shared_page_entry, 
-																										hash_elem);
-			fte = entry->fte;
+			struct shared_page_entry *entry = hash_entry (e,
+																										struct shared_page_entry, 
+														        	 							hash_elem);
+			frame = entry->frame;
 		}
-	// lock_release(&frame_table_lock);
-	return fte;
+	
+	lock_release (&shared_pages_lock);
+	
+	return frame;
 }
 
 /* Insert a shared page; returns true on success, false on failure */
 bool
-shared_pages_insert (struct file *file, off_t offset, struct frame_table_entry *fte)
+shared_pages_insert (struct file *file, off_t offset, void *frame)
 {
 	struct shared_page_entry *new_entry = malloc (sizeof (struct shared_page_entry));
 	if (new_entry == NULL)
@@ -98,13 +81,14 @@ shared_pages_insert (struct file *file, off_t offset, struct frame_table_entry *
 			return false;
 		}
 
-	new_entry->key.file = file;
-	new_entry->key.offset = offset;
-	new_entry->fte = fte;
+	new_entry->file = file;
+	new_entry->offset = offset;
+	new_entry->frame = frame;
 
-	// lock_acquire(&frame_table_lock);
-	struct hash_elem *existing = hash_insert (&shared_pages, &new_entry->hash_elem);
-	// lock_release(&frame_table_lock);
+	lock_acquire (&shared_pages_lock);
+	struct hash_elem *existing = hash_insert (&shared_pages,
+                                            &new_entry->hash_elem);
+	lock_release (&shared_pages_lock);
 
 	if (existing != NULL)
 		{
@@ -121,19 +105,22 @@ bool
 shared_pages_remove (struct file *file, off_t offset)
 {
 	struct shared_page_entry temp;
-	temp.key.file = file;
-	temp.key.offset = offset;
+	temp.file = file;
+	temp.offset = offset;
 
-	// lock_acquire(&frame_table_lock);
+	lock_acquire (&shared_pages_lock);
+
 	struct hash_elem *e = hash_find (&shared_pages, &temp.hash_elem);
 	if (e == NULL)
 		{
-			// lock_release(&frame_table_lock);
+			lock_release (&shared_pages_lock);
 			return false;
 		}
+
 	struct shared_page_entry *entry = hash_entry (e, struct shared_page_entry, hash_elem);
 	hash_delete (&shared_pages, e);
-	// lock_release(&frame_table_lock);
+
+	lock_release (&shared_pages_lock);
 
 	free (entry);
 	return true;

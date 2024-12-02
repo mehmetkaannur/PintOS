@@ -6,31 +6,29 @@
 #include "vm/page.h"
 #include "vm/frame.h"
 #include <hash.h>
-
-/* Key for shared pages: combination of file and file offset */
-struct shared_page_key
-	{
-    struct file *file;    /* File backing the page */
-    off_t offset;         /* Offset within the file */
-	};
+#include "threads/synch.h"
+#include "filesys/off_t.h"
 
 /* Entry in the shared pages hash map */
 struct shared_page_entry
 	{
-    struct shared_page_key key;        /* Key identifying the shared page */
-    struct frame_table_entry *fte;     /* Pointer to the frame table entry */
+    struct file *file;                 /* File backing the page */
+    off_t offset;                      /* Offset within the file */
+    void *frame;                       /* Frame containing the page */
     struct hash_elem hash_elem;        /* Hash element */
 	};
+
+/* Lock to access shared_pages hash map. */
+struct lock shared_pages_lock;
 
 /* Initialize shared pages hash map */
 void shared_pages_init (void);
 
-/* Lookup a shared page; returns frame_table_entry if found, else NULL */
-struct frame_table_entry *shared_pages_lookup (struct file *file, off_t offset);
+/* Lookup a shared page and returns the frame containing that pa */
+void *shared_pages_lookup (struct file *file, off_t offset);
 
 /* Insert a shared page; returns true on success, false on failure */
-bool shared_pages_insert (struct file *file, off_t offset, 
-													struct frame_table_entry *fte);
+bool shared_pages_insert (struct file *file, off_t offset, void *frame);
 
 /* Remove a shared page; returns true on success, false if not found */
 bool shared_pages_remove (struct file *file, off_t offset);
