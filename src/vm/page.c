@@ -48,7 +48,8 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
           lock_release (&filesys_lock);
         }
 
-      if (spte->page_type == EXEC_FILE && !spte->writable)
+      if ((spte->page_type == EXEC_FILE && !spte->writable)
+          || spte->page_type == MMAP_FILE)
         {
           /* Remove page from shared pages hash map. */
           shared_pages_remove (spte->file, spte->file_ofs);

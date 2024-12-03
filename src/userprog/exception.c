@@ -143,7 +143,8 @@ get_page (const void *fault_addr, const void *esp, bool write)
   bool swapped = false;
 
   /* If the page is read-only from a file, check if already in . */
-  void *frame = (spte->page_type == EXEC_FILE && !spte->writable) 
+  void *frame = ((spte->page_type == EXEC_FILE && !spte->writable)
+                || spte->page_type == MMAP_FILE)
               ? shared_pages_lookup (spte->file, spte->file_ofs)
               : NULL;
   
@@ -180,7 +181,8 @@ get_page (const void *fault_addr, const void *esp, bool write)
           /* Zero required number of bytes in page.*/
           memset (frame + spte->page_read_bytes, 0, spte->page_zero_bytes);
 
-          if (spte->page_type == EXEC_FILE && !spte->writable)
+          if ((spte->page_type == EXEC_FILE && !spte->writable)
+              || spte->page_type == MMAP_FILE)
             {
               /* Add page to shared pages hash map. */
               shared_pages_insert (spte->file, spte->file_ofs, frame);
