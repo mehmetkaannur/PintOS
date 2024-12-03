@@ -199,15 +199,24 @@ get_frame (enum palloc_flags flags)
 void
 free_frame (void *kpage)
 {
-  palloc_free_page (kpage);
-
   struct frame_table_entry i;
   i.frame = kpage;
 
-  /* Find relevant frame table entry. */
+  /* Find and remove relevant frame table entry from frame table. */
   lock_acquire (&frame_table_lock);
   struct hash_elem *e = hash_find (&frame_table, &i.hash_elem);
+
+  /* If frame entry cannot be found in frame table, another thread has chosen
+     to evict the frame and will free it. */
+  if (e == NULL)
+    {
+      lock_release (&frame_table_lock);
+      return;
+    }
+
+  hash_delete (&frame_table, e);
   lock_release (&frame_table_lock);
+
   struct frame_table_entry *fte = hash_entry (e, struct frame_table_entry,
                                               hash_elem);
 
@@ -224,12 +233,9 @@ free_frame (void *kpage)
     }
   lock_release (&fte->frame_lock);
 
-  lock_acquire (&frame_table_lock);
-  /* Remove frame table entry from frame table. */
-  hash_delete (&frame_table, &fte->hash_elem);
+  /* Free frame. */  
+  palloc_free_page (kpage);
   free (fte);
-
-  lock_release (&frame_table_lock);
 }
 
 /* Hash function for frame table. */
