@@ -55,6 +55,8 @@ static void validate_user_string (const char *uaddr, int max_len, void *esp,
 static void validate_user_data (const void *uaddr, unsigned size, void *esp,
                                 bool write);
 
+static void handle_pinning (const void *uaddr, unsigned size, bool set_pinned);
+
 /* Entry with information on how to handle syscall. */
 struct syscall_info
   {
@@ -86,6 +88,24 @@ static struct syscall_info syscall_table[] = {
   [SYS_ISDIR] = { 1, true, (syscall_func_t) sys_isdir },
   [SYS_INUMBER] = { 1, true, (syscall_func_t) sys_inumber }
 };
+
+static void
+handle_pinning (const void *uaddr, unsigned size, bool set_pinned)
+{
+  uintptr_t ptr = (uintptr_t) uaddr;
+  const uintptr_t end = ptr + size;
+  uintptr_t page_boundary = (uintptr_t) pg_round_down (uaddr);
+  while (ptr < end)
+    {
+      struct spt_entry *spte = get_spt_entry ((void *) ptr, thread_current ());
+      if (spte != NULL)
+        {
+          spte->is_pinned = set_pinned;
+        }
+      page_boundary += PGSIZE;
+      ptr = page_boundary < end ? page_boundary : end;
+    }
+}
 
 /* Checks if the pointer given by the user is a valid pointer
    and terminates user process if not. */
@@ -382,6 +402,9 @@ sys_read (void *argv[], void *esp)
   void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
 
+  /* Pin frames. */
+  handle_pinning (buffer, size, true);
+
   /* Check if buffer is valid. */
   validate_user_data (buffer, size, esp, true);
 
@@ -407,6 +430,9 @@ sys_read (void *argv[], void *esp)
   int bytes_read = file_read (file, buffer, size);
   lock_release (&filesys_lock);
 
+  /* Unpin frames. */
+  handle_pinning (buffer, size, false);
+
   return bytes_read;
 }
 
@@ -417,6 +443,9 @@ sys_write (void *argv[], void *esp)
   int fd = (int) argv[0];
   const void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
+
+  /* Pin frames. */
+  handle_pinning (buffer, size, true);
   
   /* Check if buffer is valid. */
   validate_user_data (buffer, size, esp, false);
@@ -445,6 +474,9 @@ sys_write (void *argv[], void *esp)
   lock_acquire (&filesys_lock);
   int bytes_write = file_write (file, buffer, size);
   lock_release (&filesys_lock);
+
+  /* Unpin frames. */
+  handle_pinning (buffer, size, false);
 
   return bytes_write;
 }
@@ -592,6 +624,7 @@ sys_mmap (void *argv[], void *esp UNUSED)
       spte->page_zero_bytes = zero_bytes;
       spte->in_memory = false;
       spte->in_swap = false;
+      spte->is_pinned = false;
 
       hash_insert (&t->supp_page_table, &spte->elem);
 
