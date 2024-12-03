@@ -55,7 +55,6 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
           shared_pages_remove (spte->file, spte->file_ofs);
         }
 
-      free_frame (spte->kpage);
     }
   else if (spte->in_swap)
     {
