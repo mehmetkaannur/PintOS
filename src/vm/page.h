@@ -9,8 +9,8 @@
 enum page_type
   {
     STACK,             /* Stack page, written to swap space on eviction. */
-    FILE,              /* File-backed page (e.g. from a memory mapped file),
-                          written back to file system on eviction. */
+    MMAP_FILE,              /* A page from a memory mapped file, written back 
+                          to the file system on eviction. */
     EXEC_FILE,         /* Page from an executable file, written to the swap
                           space on eviction. */
   };

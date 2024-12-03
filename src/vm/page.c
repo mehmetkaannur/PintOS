@@ -29,7 +29,8 @@ less_spte (const struct hash_elem *a, const struct hash_elem *b,
   return sa->user_page < sb->user_page;
 }
 
-/* Function to free page in supplemental page table entry. */
+/* Function to free resources related to an spt entry from the current
+   thread's spt. */
 void
 destroy_spte (struct hash_elem *e, void *aux UNUSED)
 {
@@ -38,7 +39,7 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
   if (spte->in_memory)
     {
       /* Write page back to file system, if dirty. */ 
-      if ((spte->page_type == FILE)
+      if ((spte->page_type == MMAP_FILE)
           && pagedir_is_dirty (thread_current ()->pagedir, spte->user_page))
         {
           lock_acquire (&filesys_lock);
@@ -47,7 +48,8 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
           lock_release (&filesys_lock);
         }
 
-      if (spte->page_type == EXEC_FILE)
+      if ((spte->page_type == EXEC_FILE && !spte->writable)
+          || spte->page_type == MMAP_FILE)
         {
           /* Remove page from shared pages hash map. */
           shared_pages_remove (spte->file, spte->file_ofs);

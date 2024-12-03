@@ -93,9 +93,10 @@ evict_frame (void)
                                                elem);
       struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
 
-      if (spte->page_type == FILE)
+      /* Write back if dirty. */
+      if (pagedir_is_dirty (fr->pd, fr->upage))
         {
-          if (pagedir_is_dirty (fr->pd, fr->upage))
+          if (spte->page_type == MMAP_FILE)
             {
               lock_acquire (&filesys_lock);
 
@@ -110,16 +111,16 @@ evict_frame (void)
 
               lock_release (&filesys_lock);
             }
-        }
-      else
-        {
-          /* Swap page to swap space. */
-          swap_slot = swap_out (spte->user_page);
-          if (swap_slot == BITMAP_ERROR)
+          else
             {
-              PANIC ("Failed to swap out page.");
+              /* Swap page to swap space. */
+              swap_slot = swap_out (spte->user_page);
+              if (swap_slot == BITMAP_ERROR)
+                {
+                  PANIC ("Failed to swap out page.");
+                }
+              swapped = true;
             }
-          swapped = true;
         }
 
         /* Update spt entries for all references to frame. */

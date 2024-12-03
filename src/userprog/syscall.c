@@ -615,7 +615,7 @@ sys_mmap (void *argv[], void *esp UNUSED)
         }
 
       spte->user_page = upage;
-      spte->page_type = FILE;
+      spte->page_type = MMAP_FILE;
       /* Memory-mapped files are writable by default. */
       spte->writable = true;
       spte->file = file;
