@@ -121,10 +121,10 @@ bool
 get_page (const void *fault_addr, const void *esp, bool write)
 {
   /* Find relevant entry in supplemental page table. */
+  struct thread *t = thread_current ();
   struct spt_entry entry;
   entry.user_page = pg_round_down (fault_addr);
-  struct hash_elem *e = hash_find (&thread_current ()->supp_page_table,
-                                   &entry.elem);
+  struct hash_elem *e = hash_find (&t->supp_page_table, &entry.elem);
 
   /* Grow stack if necessary. */
   if (e == NULL)
@@ -140,8 +140,11 @@ get_page (const void *fault_addr, const void *esp, bool write)
       return false;
     }
 
+  bool swapped = false;
+
   /* If the page is read-only from a file, check if already in . */
-  void *frame = (spte->page_type == EXEC_FILE && !spte->writable) 
+  void *frame = ((spte->page_type == EXEC_FILE && !spte->writable)
+                || spte->page_type == MMAP_FILE)
               ? shared_pages_lookup (spte->file, spte->file_ofs)
               : NULL;
   
@@ -156,6 +159,7 @@ get_page (const void *fault_addr, const void *esp, bool write)
           /* Swap in the page. */
           swap_in (frame, spte->swap_slot);
           spte->in_swap = false;
+          swapped = true;
         }
       else
         {
@@ -177,7 +181,8 @@ get_page (const void *fault_addr, const void *esp, bool write)
           /* Zero required number of bytes in page.*/
           memset (frame + spte->page_read_bytes, 0, spte->page_zero_bytes);
 
-          if (spte->page_type == EXEC_FILE && !spte->writable)
+          if ((spte->page_type == EXEC_FILE && !spte->writable)
+              || spte->page_type == MMAP_FILE)
             {
               /* Add page to shared pages hash map. */
               shared_pages_insert (spte->file, spte->file_ofs, frame);
@@ -187,16 +192,19 @@ get_page (const void *fault_addr, const void *esp, bool write)
     }
 
   /* Point page table entry for faulting address to frame. */
-  bool success = pagedir_set_page (thread_current ()->pagedir,
-                                   spte->user_page,
-                                   frame,
-                                   spte->writable);
+  bool success = pagedir_set_page (t->pagedir, spte->user_page,
+                                   frame, spte->writable);
   if (!success)
     {
       free_frame (frame);
     }
   else
     {
+      if (swapped)
+        {
+          pagedir_set_dirty (t->pagedir, spte->user_page, true);
+        }
+
       /* Update supplemental page table entry. */
       spte->in_memory = true;
       spte->kpage = frame;
