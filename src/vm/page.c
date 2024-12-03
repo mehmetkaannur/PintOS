@@ -29,7 +29,8 @@ less_spte (const struct hash_elem *a, const struct hash_elem *b,
   return sa->user_page < sb->user_page;
 }
 
-/* Function to free page in supplemental page table entry. */
+/* Function to free resources related to an spt entry from the current
+   thread's spt. */
 void
 destroy_spte (struct hash_elem *e, void *aux UNUSED)
 {
