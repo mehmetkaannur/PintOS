@@ -232,6 +232,7 @@ grow_stack (const void *uaddr, const void *esp)
                 }
 
               spte->in_memory = true;
+              spte->is_pinned = false;
               spte->user_page = pg_round_down (uaddr);
               spte->page_type = STACK;
               spte->in_swap = false;
@@ -794,6 +795,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
               return false;
             }
 
+          spte->is_pinned = false;
           spte->in_memory = false;
           spte->user_page = upage;
           spte->page_type = EXEC_FILE;
@@ -849,6 +851,7 @@ setup_stack (void **esp)
             }
 
           spte->in_memory = true;
+          spte->is_pinned = false;
           spte->user_page = upage;
           spte->page_type = STACK;
           spte->in_swap = false;

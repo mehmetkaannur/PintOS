@@ -57,7 +57,14 @@ evict_frame (void)
     {
       struct frame_reference *fr = list_entry (el, struct frame_reference,
                                                elem);
-      if (pagedir_is_accessed (fr->pd, fr->upage))
+      
+      if (get_spt_entry (fr->upage, fr->owner)->is_pinned)
+        {
+          /* Page is pinned, don't evict. */
+          accessed = true;
+          break;
+        }
+      else if (pagedir_is_accessed (fr->pd, fr->upage))
         {
           /* Give frame a second chance. */
           accessed = true;

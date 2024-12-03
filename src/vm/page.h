@@ -22,6 +22,7 @@ struct spt_entry
                                      supplemental page table. */
     bool in_memory;               /* Indicates if page is in memory. */
     bool in_swap;                 /* Indicates if page is in swap space. */
+    bool is_pinned;               /* Indicates if page is pinned. */
     uint8_t *user_page;           /* User virtual page. */
     void *kpage;                  /* Kernel virtual page if in memory. */
     enum page_type page_type;     /* Type of page wrt. eviction. */
