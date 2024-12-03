@@ -443,6 +443,9 @@ sys_write (void *argv[], void *esp)
   int fd = (int) argv[0];
   const void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
+
+  /* Pin frames. */
+  handle_pinning (buffer, size, true);
   
   /* Check if buffer is valid. */
   validate_user_data (buffer, size, esp, false);
@@ -471,6 +474,9 @@ sys_write (void *argv[], void *esp)
   lock_acquire (&filesys_lock);
   int bytes_write = file_write (file, buffer, size);
   lock_release (&filesys_lock);
+
+  /* Unpin frames. */
+  handle_pinning (buffer, size, false);
 
   return bytes_write;
 }
