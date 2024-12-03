@@ -56,7 +56,7 @@ evict_frame (void)
           el = list_next (el))
       {
         struct frame_reference *fr = list_entry (el, struct frame_reference,
-                                                elem);
+                                                 elem);
         
         if (get_spt_entry (fr->upage, fr->owner)->is_pinned)
           {
@@ -79,8 +79,23 @@ evict_frame (void)
           break;
         }
     }
-  
+
+  /* Remove entry for frame from frame table so it does not get chosen 
+     for eviction by another thread. */
+  hash_delete (&frame_table, &f->hash_elem);
+
   lock_release (&frame_table_lock);
+
+  /* Remove all references to this frame. */
+  struct list_elem *el;
+  for (el = list_begin (&f->frame_references);
+       el != list_end (&f->frame_references);
+       el = list_next (el))
+    {
+      struct frame_reference *fr = list_entry (el, struct frame_reference,
+                                               elem);
+      pagedir_clear_page (fr->pd, fr->upage);
+    }
 
   if (!list_empty (&f->frame_references))
     {
@@ -102,8 +117,7 @@ evict_frame (void)
 
               /* Write page back to file system. */
               file_seek (spte->file, spte->file_ofs);
-              if (file_write (spte->file, spte->user_page,
-                              spte->page_read_bytes)
+              if (file_write (spte->file, frame, spte->page_read_bytes)
                   != (off_t) spte->page_read_bytes)
                 {
                   PANIC ("Failed to write page back to file system.");
@@ -114,7 +128,7 @@ evict_frame (void)
           else
             {
               /* Swap page to swap space. */
-              swap_slot = swap_out (spte->user_page);
+              swap_slot = swap_out (frame);
               if (swap_slot == BITMAP_ERROR)
                 {
                   PANIC ("Failed to swap out page.");
@@ -123,30 +137,31 @@ evict_frame (void)
             }
         }
 
-        /* Update spt entries for all references to frame. */
-        struct list_elem *e;
-        for (e = list_begin (&f->frame_references);
-             e != list_end (&f->frame_references);
-             e = list_next (e))
-          {
-            struct frame_reference *fr = list_entry (e,
-                                                     struct frame_reference,
-                                                     elem);
-            struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
+      /* Update spt entries for all references to frame. */
+      struct list_elem *e = list_begin (&f->frame_references);
+      while (e != list_end (&f->frame_references))
+        {
+          struct frame_reference *fr = list_entry (e,
+                                                   struct frame_reference,
+                                                   elem);
+          struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
 
-            if (swapped)
-              {
-                spte->swap_slot = swap_slot;
-                spte->in_swap = true;
-              }
+          if (swapped)
+            {
+              spte->swap_slot = swap_slot;
+              spte->in_swap = true;
+            }
 
-            spte->in_memory = false;
-          }
-
+          spte->in_memory = false;
+          e = list_remove (e);
+          free (fr);
+        }
     }
 
-  /* Free frame being evicted, writing back page if necessary. */
-  free_frame (frame);
+  free (f);
+
+  /* Free frame being evicted. */
+  palloc_free_page (frame);
 
   return frame;
 }
