@@ -130,8 +130,28 @@ pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
       struct frame_table_entry i;
       i.frame = kpage;
       struct hash_elem *e = hash_find (&frame_table, &i.hash_elem);
-      struct frame_table_entry *fte = hash_entry (e, struct frame_table_entry,
-                                                  hash_elem);
+      struct frame_table_entry *fte; 
+
+      if (e == NULL)
+        {
+          fte = malloc (sizeof (struct frame_table_entry));
+          if (fte == NULL)
+            {
+              return false;
+            }
+
+          /* Set up frame table entry. */
+          fte->frame = kpage;
+          lock_init (&fte->frame_lock);
+          list_init (&fte->frame_references);
+
+          hash_insert (&frame_table, &fte->hash_elem);
+        }
+      else
+        {
+          fte = hash_entry (e, struct frame_table_entry, hash_elem);
+        }
+
       list_push_back (&fte->frame_references, &fr->elem);
       lock_release (&frame_table_lock);
 

@@ -167,22 +167,6 @@ get_frame (enum palloc_flags flags)
   
   ASSERT (kpage != NULL);
 
-  struct frame_table_entry *fte = malloc (sizeof (struct frame_table_entry));
-  if (fte == NULL)
-    {
-      return NULL;
-    }
-
-  /* Set up frame table entry. */
-  fte->frame = kpage;
-  list_init (&fte->frame_references);
-  
-  /* Insert frame table entry into table. 
-     (frame_table_lock will be released by install_page). */
-  lock_acquire (&frame_table_lock);
-  hash_insert (&frame_table, &fte->hash_elem);
-  lock_release (&frame_table_lock);
-
   return kpage;
 }
 
