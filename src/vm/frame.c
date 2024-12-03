@@ -96,7 +96,7 @@ evict_frame (void)
       /* Write back if dirty. */
       if (pagedir_is_dirty (fr->pd, fr->upage))
         {
-          if (spte->page_type == FILE)
+          if (spte->page_type == MMAP_FILE)
             {
               lock_acquire (&filesys_lock);
 

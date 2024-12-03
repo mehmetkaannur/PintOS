@@ -39,7 +39,7 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
   if (spte->in_memory)
     {
       /* Write page back to file system, if dirty. */ 
-      if ((spte->page_type == FILE)
+      if ((spte->page_type == MMAP_FILE)
           && pagedir_is_dirty (thread_current ()->pagedir, spte->user_page))
         {
           lock_acquire (&filesys_lock);
