@@ -10,6 +10,7 @@
 #include "userprog/pagedir.h"
 #include "userprog/syscall.h"
 #include "devices/swap.h"
+#include "vm/shared_page.h"
 
 /* Frame table hash map. */
 struct hash frame_table;
@@ -146,6 +147,13 @@ evict_frame (void)
           swapped = true;
         }
       lock_acquire (&f->frame_lock);
+    }
+
+  if ((spte->page_type == EXEC_FILE && !spte->writable)
+      || spte->page_type == MMAP_FILE)
+    {
+      /* Remove page from shared pages hash map. */
+      shared_pages_remove (spte->file, spte->file_ofs);
     }
 
   lock_release (&fr->owner->spt_lock);
