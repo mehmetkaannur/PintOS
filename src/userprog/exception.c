@@ -151,8 +151,10 @@ get_page (const void *fault_addr, const void *esp, bool write)
                 || spte->page_type == MMAP_FILE)
               ? shared_pages_lookup (spte->file, spte->file_ofs)
               : NULL;
+
+  bool found_shared = frame != NULL;
   
-  if (frame == NULL)
+  if (!found_shared)
     {
       lock_release (&t->spt_lock);
 
@@ -203,6 +205,12 @@ get_page (const void *fault_addr, const void *esp, bool write)
   /* Point page table entry for faulting address to frame. */
   bool success = pagedir_set_page (t->pagedir, spte->user_page,
                                    frame, spte->writable);
+  
+  if (found_shared)
+    {
+      lock_release (&shared_pages_lock);
+    }
+
   if (!success)
     {
       free_frame (frame);

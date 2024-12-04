@@ -66,7 +66,10 @@ shared_pages_lookup (struct file *file, off_t offset)
 			frame = entry->frame;
 		}
 	
-	lock_release (&shared_pages_lock);
+  if (frame == NULL)
+    {
+    	lock_release (&shared_pages_lock);
+    }
 	
 	return frame;
 }
