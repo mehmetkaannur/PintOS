@@ -50,7 +50,7 @@ evict_frame (void)
       lock_acquire (&f->frame_lock);
 
       /* Iterate frame references to see if frame was accessed by any page
-        referring to it. */
+         referring to it. */
       bool accessed = false;
       struct list_elem *el; 
       for (el = list_begin (&f->frame_references);
@@ -60,10 +60,12 @@ evict_frame (void)
         struct frame_reference *fr = list_entry (el, struct frame_reference,
                                                  elem);
         
+        lock_acquire (&fr->owner->spt_lock);
         if (get_spt_entry (fr->upage, fr->owner)->is_pinned)
           {
             /* Page is pinned, don't evict. */
             accessed = true;
+            lock_release (&fr->owner->spt_lock);
             break;
           }
         else if (pagedir_is_accessed (fr->pd, fr->upage))
@@ -72,6 +74,7 @@ evict_frame (void)
             accessed = true;
             pagedir_set_accessed (fr->pd, fr->upage, false);
           }
+        lock_release (&fr->owner->spt_lock);
       }
 
       if (!accessed)
@@ -110,7 +113,8 @@ evict_frame (void)
   /* Write frame back based on spt entry. */
   struct list_elem *el = list_front (&f->frame_references); 
   struct frame_reference *fr = list_entry (el, struct frame_reference,
-                                            elem);
+                                           elem);
+  lock_acquire (&fr->owner->spt_lock);
   struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
 
   /* Write back if dirty. */
@@ -144,13 +148,16 @@ evict_frame (void)
       lock_acquire (&f->frame_lock);
     }
 
+  lock_release (&fr->owner->spt_lock);
+
   /* Update spt entries for all references to frame. */
   e = list_begin (&f->frame_references);
   while (e != list_end (&f->frame_references))
     {
       struct frame_reference *fr = list_entry (e,
-                                                struct frame_reference,
-                                                elem);
+                                               struct frame_reference,
+                                               elem);
+      lock_acquire (&fr->owner->spt_lock);
       struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
 
       if (swapped)
@@ -160,6 +167,8 @@ evict_frame (void)
         }
 
       spte->in_memory = false;
+      lock_release (&fr->owner->spt_lock);
+
       e = list_remove (e);
       free (fr);
     }

@@ -124,11 +124,14 @@ get_page (const void *fault_addr, const void *esp, bool write)
   struct thread *t = thread_current ();
   struct spt_entry entry;
   entry.user_page = pg_round_down (fault_addr);
+  
+  lock_acquire (&t->spt_lock);
   struct hash_elem *e = hash_find (&t->supp_page_table, &entry.elem);
 
   /* Grow stack if necessary. */
   if (e == NULL)
     {
+      lock_release (&t->spt_lock);
       return grow_stack (fault_addr, esp);
     }
 
@@ -137,6 +140,7 @@ get_page (const void *fault_addr, const void *esp, bool write)
   /* Check for write to read-only page. */
   if (write && !spte->writable) 
     {
+      lock_release (&t->spt_lock);
       return false;
     }
 
@@ -150,8 +154,12 @@ get_page (const void *fault_addr, const void *esp, bool write)
   
   if (frame == NULL)
     {
+      lock_release (&t->spt_lock);
+
       /* Obtain a frame to store the page. */
       frame = get_frame (PAL_USER);
+
+      lock_acquire (&t->spt_lock);
 
       /* Fetch data into frame. */
       if (spte->in_swap)
@@ -171,6 +179,7 @@ get_page (const void *fault_addr, const void *esp, bool write)
               if (file_read (spte->file, frame, spte->page_read_bytes)
                   != (int) spte->page_read_bytes)
                 {
+                  lock_release (&t->spt_lock);
                   free_frame (frame);
                   lock_release (&filesys_lock);
                   PANIC ("Failed to read file into frame.");
@@ -209,6 +218,8 @@ get_page (const void *fault_addr, const void *esp, bool write)
       spte->in_memory = true;
       spte->kpage = frame;
     }
+
+  lock_release (&t->spt_lock);
 
   return success;
 }
