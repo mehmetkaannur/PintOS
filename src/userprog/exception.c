@@ -152,6 +152,8 @@ get_page (const void *fault_addr, const void *esp, bool write)
               ? shared_pages_lookup (spte->file, spte->file_ofs)
               : NULL;
 
+  /* If a shared page was found in memory, we use that frame and currently
+     hold the shared_pages lock. */
   bool found_shared = frame != NULL;
   
   if (!found_shared)
@@ -182,8 +184,8 @@ get_page (const void *fault_addr, const void *esp, bool write)
                   != (int) spte->page_read_bytes)
                 {
                   lock_release (&t->spt_lock);
-                  free_frame (frame);
                   lock_release (&filesys_lock);
+                  free_frame (frame);
                   PANIC ("Failed to read file into frame.");
                 }
               lock_release (&filesys_lock);
@@ -211,12 +213,15 @@ get_page (const void *fault_addr, const void *esp, bool write)
       lock_release (&shared_pages_lock);
     }
 
+  lock_release (&t->spt_lock);
+
   if (!success)
     {
       free_frame (frame);
     }
   else
     {
+      lock_acquire (&t->spt_lock);
       if (swapped)
         {
           pagedir_set_dirty (t->pagedir, spte->user_page, true);
@@ -225,9 +230,8 @@ get_page (const void *fault_addr, const void *esp, bool write)
       /* Update supplemental page table entry. */
       spte->in_memory = true;
       spte->kpage = frame;
+      lock_release (&t->spt_lock);
     }
-
-  lock_release (&t->spt_lock);
 
   return success;
 }

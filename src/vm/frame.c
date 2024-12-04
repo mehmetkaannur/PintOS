@@ -30,7 +30,9 @@ evict_frame (void)
   ASSERT (!hash_empty (&frame_table));
 
   void *frame = NULL;
+  bool shared = false;
 
+  lock_acquire (&shared_pages_lock);
   lock_acquire (&frame_table_lock);
 
   /* Iterate frame table entries to find a frame to evict. */
@@ -50,14 +52,8 @@ evict_frame (void)
       
       lock_acquire (&f->frame_lock);
 
-      bool shared = list_size (&f->frame_references) > 1;
+      shared = list_size (&f->frame_references) > 1;
         
-      if (shared)
-        {
-          /* Frame is shared. */
-          lock_acquire (&shared_pages_lock);
-        }
-
       /* Iterate frame references to see if frame was accessed by any page
          referring to it. */
       bool accessed = false;
@@ -90,30 +86,26 @@ evict_frame (void)
         {
           /* Evict this frame. */
           frame = f->frame;
-          
-          if (shared)
-            {
-              /* Remove shared page from shared pages hash map. */
-              struct list_elem *el = list_begin (&f->frame_references);
-              struct frame_reference *fr = list_entry (el,
-                                                       struct frame_reference,
-                                                       elem);
-              lock_acquire (&fr->owner->spt_lock);
-              struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
-              shared_pages_remove (spte->file, spte->file_ofs);
-              lock_release (&fr->owner->spt_lock);
-
-              lock_release (&shared_pages_lock);
-            }
           break;
         }
 
-      if (shared)
-        {
-          lock_release (&shared_pages_lock);
-        }
       lock_release (&f->frame_lock);
     }
+
+  if (shared)
+    {
+      /* Remove shared page from shared pages hash map. */
+      struct list_elem *el = list_begin (&f->frame_references);
+      struct frame_reference *fr = list_entry (el,
+                                               struct frame_reference,
+                                               elem);
+      lock_acquire (&fr->owner->spt_lock);
+      struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
+      shared_pages_remove (spte->file, spte->file_ofs);
+      lock_release (&fr->owner->spt_lock);
+    }
+
+  lock_release (&shared_pages_lock);
 
   /* Remove entry for frame from frame table so it does not get chosen 
      for eviction by another thread. */
@@ -148,7 +140,6 @@ evict_frame (void)
   /* Write back if dirty. */
   if (pagedir_is_dirty (fr->pd, fr->upage))
     {
-      lock_release (&f->frame_lock);
       if (spte->page_type == MMAP_FILE)
         {
           lock_acquire (&filesys_lock);
@@ -173,7 +164,6 @@ evict_frame (void)
             }
           swapped = true;
         }
-      lock_acquire (&f->frame_lock);
     }
 
   lock_release (&fr->owner->spt_lock);
