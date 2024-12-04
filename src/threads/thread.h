@@ -4,7 +4,8 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "hash.h"
+#include <hash.h>
+#include "threads/synch.h"
 
 typedef int mapid_t;
 typedef int32_t fixed_point_t;
@@ -118,9 +119,13 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-    struct file *executable;            /* The executable file of the process */
+    struct file *executable;            /* The executable file of the
+                                           process */
+    struct lock spt_lock;               /* Lock for supplemental page
+                                           table. */
     struct hash supp_page_table;        /* Supplemental page table. */
-    struct hash mmap_table;             /* Hash table for memory-mapped files. */
+    struct hash mmap_table;             /* Hash table for memory-mapped
+                                           files. */
     mapid_t next_mapid;                 /* Next available map ID. */
 #endif
 

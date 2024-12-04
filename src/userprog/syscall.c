@@ -95,9 +95,12 @@ handle_pinning (const void *uaddr, unsigned size, bool set_pinned)
   uintptr_t ptr = (uintptr_t) uaddr;
   const uintptr_t end = ptr + size;
   uintptr_t page_boundary = (uintptr_t) pg_round_down (uaddr);
+  struct thread *t = thread_current ();
+
+  lock_acquire (&t->spt_lock);
   while (ptr < end)
     {
-      struct spt_entry *spte = get_spt_entry ((void *) ptr, thread_current ());
+      struct spt_entry *spte = get_spt_entry ((void *) ptr, t);
       if (spte != NULL)
         {
           spte->is_pinned = set_pinned;
@@ -105,6 +108,7 @@ handle_pinning (const void *uaddr, unsigned size, bool set_pinned)
       page_boundary += PGSIZE;
       ptr = page_boundary < end ? page_boundary : end;
     }
+  lock_release (&t->spt_lock);
 }
 
 /* Checks if the pointer given by the user is a valid pointer
@@ -195,15 +199,19 @@ check_overlap (void *addr, size_t length)
   void *upage = addr;
   size_t size = length;
 
+  lock_acquire (&t->spt_lock);
   while (size > 0) 
     {
       if (get_spt_entry (upage, t) != NULL)
         {
+          lock_release (&t->spt_lock);
           return true; /* Overlaps with existing mapping */
         }
       upage += PGSIZE;
       size -= size > PGSIZE ? PGSIZE : size;
     }
+  lock_release (&t->spt_lock);
+
   return false;
 }
 
@@ -626,7 +634,9 @@ sys_mmap (void *argv[], void *esp UNUSED)
       spte->in_swap = false;
       spte->is_pinned = false;
 
+      lock_acquire (&t->spt_lock);
       hash_insert (&t->supp_page_table, &spte->elem);
+      lock_release (&t->spt_lock);
 
       offset += PGSIZE;
       length -= read_bytes;
@@ -661,9 +671,16 @@ sys_munmap (void *argv[], void *esp UNUSED)
       size_t page_read_bytes = length < PGSIZE ? length : PGSIZE;
       void *upage = addr + offset;
       
+      lock_acquire (&t->spt_lock);
+
       struct spt_entry *spte = get_spt_entry (upage, t);
       hash_delete (&t->supp_page_table, &spte->elem);
+      void *frame = spte->kpage;
       destroy_spte (&spte->elem, NULL);
+
+      lock_release (&t->spt_lock);
+
+      free_frame (frame);
       
       offset += PGSIZE;
       length -= page_read_bytes;

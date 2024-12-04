@@ -211,10 +211,11 @@ grow_stack (const void *uaddr, const void *esp)
   int diff = esp - uaddr;
   if (uaddr >= esp || diff == PUSHA_SIZE || diff == PUSH_SIZE)
     {
+      struct thread *cur = thread_current ();
       void *frame = get_frame (PAL_USER);
       if (frame != NULL)
         {
-          bool success = pagedir_set_page (thread_current ()->pagedir,
+          bool success = pagedir_set_page (cur->pagedir,
                                            pg_round_down (uaddr),
                                            frame,
                                            true);
@@ -239,7 +240,9 @@ grow_stack (const void *uaddr, const void *esp)
               spte->writable = true;
               spte->kpage = frame;
 
-              hash_insert (&thread_current ()->supp_page_table, &spte->elem);         
+              lock_acquire (&cur->spt_lock);
+              hash_insert (&cur->supp_page_table, &spte->elem);         
+              lock_release (&cur->spt_lock);
             }
           return success;
         }
@@ -442,7 +445,9 @@ process_exit (void)
   lock_release (&filesys_lock);
 
   /* Free all supplemental page table entries and associated resources. */
+  lock_acquire (&cur->spt_lock);
   hash_destroy (&cur->supp_page_table, destroy_spte);
+  lock_release (&cur->spt_lock);
   
   /* Unmap all memory-mapped files. */
   hash_destroy (&cur->mmap_table, mmap_file_destroy);
@@ -779,11 +784,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
       
-      /* Set upage as unmapped. */
       struct thread *t = thread_current ();
       
       struct spt_entry entry;
       entry.user_page = upage;
+
+      lock_acquire (&t->spt_lock); 
       struct hash_elem *e = hash_find (&t->supp_page_table, &entry.elem);
 
       if (e == NULL)
@@ -816,6 +822,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
               spte->writable = true;
             }
         }
+      lock_release (&t->spt_lock);
 
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -843,6 +850,8 @@ setup_stack (void **esp)
         {
           *esp = PHYS_BASE;
 
+          struct thread *t = thread_current ();
+
           /* Add entry for upage in supplemental page table. */
           struct spt_entry *spte = malloc (sizeof (struct spt_entry));
           if (spte == NULL)
@@ -858,7 +867,9 @@ setup_stack (void **esp)
           spte->writable = true;
           spte->kpage = kpage;
 
-          hash_insert (&thread_current ()->supp_page_table, &spte->elem);         
+          lock_acquire (&t->spt_lock);
+          hash_insert (&t->supp_page_table, &spte->elem);         
+          lock_release (&t->spt_lock);
         }
       else
         free_frame (kpage);
