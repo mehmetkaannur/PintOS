@@ -123,6 +123,8 @@ struct thread
                                            process */
     struct lock spt_lock;               /* Lock for supplemental page
                                            table. */
+    struct lock io_lock;                /* Lock for handling IO fields of a
+                                           supplemental page table entry. */
     struct hash supp_page_table;        /* Supplemental page table. */
     struct hash mmap_table;             /* Hash table for memory-mapped
                                            files. */

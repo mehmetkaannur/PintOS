@@ -137,7 +137,7 @@ evict_frame (void)
     {
       struct frame_reference *fr = list_entry (e, struct frame_reference,
                                                elem);
-      lock_acquire (&fr->owner->spt_lock);
+      lock_acquire (&fr->owner->io_lock);
       pagedir_clear_page (fr->pd, fr->upage);
     }
 
@@ -151,7 +151,9 @@ evict_frame (void)
   struct list_elem *el = list_front (&f->frame_references); 
   struct frame_reference *fr = list_entry (el, struct frame_reference,
                                            elem);
+  lock_acquire (&fr->owner->spt_lock);
   struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
+  lock_release (&fr->owner->spt_lock);
 
   /* Write back if dirty. */
   if (pagedir_is_dirty (fr->pd, fr->upage))
@@ -189,7 +191,9 @@ evict_frame (void)
       struct frame_reference *fr = list_entry (e,
                                                struct frame_reference,
                                                elem);
+      lock_acquire (&fr->owner->spt_lock);
       struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
+      lock_release (&fr->owner->spt_lock);
 
       if (swapped)
         {
@@ -198,7 +202,7 @@ evict_frame (void)
         }
 
       spte->in_memory = false;
-      lock_release (&fr->owner->spt_lock);
+      lock_release (&fr->owner->io_lock);
 
       e = list_remove (e);
       free (fr);

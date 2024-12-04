@@ -136,11 +136,11 @@ get_page (const void *fault_addr, const void *esp, bool write)
     }
 
   struct spt_entry *spte = hash_entry (e, struct spt_entry, elem);
+  lock_release (&t->spt_lock);
 
   /* Check for write to read-only page. */
   if (write && !spte->writable) 
     {
-      lock_release (&t->spt_lock);
       return false;
     }
 
@@ -158,12 +158,10 @@ get_page (const void *fault_addr, const void *esp, bool write)
   
   if (!found_shared)
     {
-      lock_release (&t->spt_lock);
-
       /* Obtain a frame to store the page. */
       frame = get_frame (PAL_USER);
 
-      lock_acquire (&t->spt_lock);
+      lock_acquire (&t->io_lock);
 
       /* Fetch data into frame. */
       if (spte->in_swap)
@@ -183,7 +181,7 @@ get_page (const void *fault_addr, const void *esp, bool write)
               if (file_read (spte->file, frame, spte->page_read_bytes)
                   != (int) spte->page_read_bytes)
                 {
-                  lock_release (&t->spt_lock);
+                  lock_release (&t->io_lock);
                   lock_release (&filesys_lock);
                   free_frame (frame);
                   PANIC ("Failed to read file into frame.");
@@ -202,6 +200,7 @@ get_page (const void *fault_addr, const void *esp, bool write)
             }
         }
 
+      lock_release (&t->io_lock);
     }
 
   /* Point page table entry for faulting address to frame. */
@@ -212,8 +211,6 @@ get_page (const void *fault_addr, const void *esp, bool write)
     {
       lock_release (&shared_pages_lock);
     }
-
-  lock_release (&t->spt_lock);
 
   if (!success)
     {
