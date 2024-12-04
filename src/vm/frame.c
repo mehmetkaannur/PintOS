@@ -21,7 +21,20 @@ struct lock frame_table_lock;
 static hash_hash_func hash_frame_table_entry;
 static hash_less_func less_frame_table_entry;
 
+static list_less_func frame_reference_less;
+
 static void *evict_frame (void);
+
+/* Comparator for frame reference list. */
+static bool
+frame_reference_less (const struct list_elem *a, const struct list_elem *b,
+                      void *aux UNUSED)
+{
+  struct frame_reference *fa = list_entry (a, struct frame_reference, elem);
+  struct frame_reference *fb = list_entry (b, struct frame_reference, elem);
+
+  return fa->owner->tid < fb->owner->tid;
+}
 
 /* Evict a frame using the 'second-chance' page replacement algorithm. */
 static void *
@@ -113,6 +126,9 @@ evict_frame (void)
 
   lock_release (&frame_table_lock);
 
+  /* Sort frame references to ensure lock ordering. */
+  list_sort (&f->frame_references, frame_reference_less, NULL);
+
   /* Clear all references to this frame. */
   struct list_elem *e;
   for (e = list_begin (&f->frame_references);
@@ -121,6 +137,7 @@ evict_frame (void)
     {
       struct frame_reference *fr = list_entry (e, struct frame_reference,
                                                elem);
+      lock_acquire (&fr->owner->spt_lock);
       pagedir_clear_page (fr->pd, fr->upage);
     }
 
@@ -134,7 +151,6 @@ evict_frame (void)
   struct list_elem *el = list_front (&f->frame_references); 
   struct frame_reference *fr = list_entry (el, struct frame_reference,
                                            elem);
-  lock_acquire (&fr->owner->spt_lock);
   struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
 
   /* Write back if dirty. */
@@ -166,8 +182,6 @@ evict_frame (void)
         }
     }
 
-  lock_release (&fr->owner->spt_lock);
-
   /* Update spt entries for all references to frame. */
   e = list_begin (&f->frame_references);
   while (e != list_end (&f->frame_references))
@@ -175,7 +189,6 @@ evict_frame (void)
       struct frame_reference *fr = list_entry (e,
                                                struct frame_reference,
                                                elem);
-      lock_acquire (&fr->owner->spt_lock);
       struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
 
       if (swapped)
