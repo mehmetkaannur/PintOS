@@ -74,14 +74,14 @@ evict_frame (void)
           }
       }
 
-      lock_release (&f->frame_lock);
-
       if (!accessed)
         {
           /* Evict this frame. */
           frame = f->frame;
           break;
         }
+
+      lock_release (&f->frame_lock);
     }
 
   /* Remove entry for frame from frame table so it does not get chosen 
@@ -90,8 +90,7 @@ evict_frame (void)
 
   lock_release (&frame_table_lock);
 
-  /* Remove all references to this frame. */
-  lock_acquire (&f->frame_lock);
+  /* Clear all references to this frame. */
   struct list_elem *e;
   for (e = list_begin (&f->frame_references);
        e != list_end (&f->frame_references);
@@ -101,25 +100,23 @@ evict_frame (void)
                                                elem);
       pagedir_clear_page (fr->pd, fr->upage);
     }
-  lock_release (&f->frame_lock);
-
-  /* Every frame recorded in the frame table contains a user page. */
-  ASSERT (!list_empty (&f->frame_references));
 
   size_t swap_slot;
   bool swapped = false;
 
+  /* Every frame recorded in the frame table contains a user page. */
+  ASSERT (!list_empty (&f->frame_references));
+  
   /* Write frame back based on spt entry. */
-  lock_acquire (&f->frame_lock);
   struct list_elem *el = list_front (&f->frame_references); 
   struct frame_reference *fr = list_entry (el, struct frame_reference,
                                             elem);
-  lock_release (&f->frame_lock);
   struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
 
   /* Write back if dirty. */
   if (pagedir_is_dirty (fr->pd, fr->upage))
     {
+      lock_release (&f->frame_lock);
       if (spte->page_type == MMAP_FILE)
         {
           lock_acquire (&filesys_lock);
@@ -144,10 +141,10 @@ evict_frame (void)
             }
           swapped = true;
         }
+      lock_acquire (&f->frame_lock);
     }
 
   /* Update spt entries for all references to frame. */
-  lock_acquire (&f->frame_lock);
   e = list_begin (&f->frame_references);
   while (e != list_end (&f->frame_references))
     {
@@ -166,6 +163,7 @@ evict_frame (void)
       e = list_remove (e);
       free (fr);
     }
+
   lock_release (&f->frame_lock);
 
   free (f);
