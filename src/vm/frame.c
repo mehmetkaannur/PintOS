@@ -202,7 +202,7 @@ free_frame (void *kpage)
   struct frame_table_entry i;
   i.frame = kpage;
 
-  /* Find and remove relevant frame table entry from frame table. */
+  /* Find relevant frame table entry from frame table. */
   lock_acquire (&frame_table_lock);
   struct hash_elem *e = hash_find (&frame_table, &i.hash_elem);
 
@@ -213,25 +213,49 @@ free_frame (void *kpage)
       lock_release (&frame_table_lock);
       return;
     }
-
-  hash_delete (&frame_table, e);
-  lock_release (&frame_table_lock);
-
+  
   struct frame_table_entry *fte = hash_entry (e, struct frame_table_entry,
                                               hash_elem);
 
+  /* Remove frame table entry, to prevent frame being chosen for eviction. */
+  hash_delete (&frame_table, e);
+
+  lock_release (&frame_table_lock);
+
+  struct thread *t = thread_current ();
+  struct list_elem *el = list_begin (&fte->frame_references);
+
   /* Remove all references to this frame. */
   lock_acquire (&fte->frame_lock);
-  struct list_elem *el = list_begin (&fte->frame_references);
+  bool shared = false;
   while (el != list_end (&fte->frame_references))
     {
       struct frame_reference *fr = list_entry (el, struct frame_reference,
                                                elem);
-      pagedir_clear_page (fr->pd, fr->upage);
-      el = list_remove (el);
-      free (fr);
+      if (fr->owner != t)
+        {
+          shared = true;
+          el = list_next (el);
+        }
+      else
+        {
+          pagedir_clear_page (fr->pd, fr->upage);
+          el = list_remove (el);
+          free (fr);
+        }
     }
   lock_release (&fte->frame_lock);
+
+  /* If page is shared don't free frame. */
+  if (shared)
+    {
+      /* Put frame table entry back into frame table. */
+      lock_acquire (&frame_table_lock);
+      hash_insert (&frame_table, &fte->hash_elem);
+      lock_release (&frame_table_lock);
+
+      return;
+    }
 
   /* Free frame. */  
   palloc_free_page (kpage);
