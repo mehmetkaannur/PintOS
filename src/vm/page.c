@@ -55,7 +55,6 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
           shared_pages_remove (spte->file, spte->file_ofs);
         }
 
-      free_frame (spte->kpage);
     }
   else if (spte->in_swap)
     {
@@ -66,6 +65,8 @@ destroy_spte (struct hash_elem *e, void *aux UNUSED)
   free (spte);
 }
 
+/* Returns the spt entry for the page with user address UPAGE
+   in the spt of thread T. */
 struct spt_entry *
 get_spt_entry (void *upage, struct thread *t)
 {
@@ -74,17 +75,4 @@ get_spt_entry (void *upage, struct thread *t)
   struct hash_elem *e = hash_find (&t->supp_page_table, &temp_spte.elem);
 
   return e == NULL ? NULL : hash_entry (e, struct spt_entry, elem);
-}
-
-void
-remove_page_from_spt (void *upage)
-{
-  struct spt_entry temp_spte;
-  temp_spte.user_page = upage;
-  struct hash_elem *e = hash_delete (&thread_current ()->supp_page_table, &temp_spte.elem);
-  if (e != NULL) 
-    {
-      struct spt_entry *spte = hash_entry (e, struct spt_entry, elem);
-      free (spte);
-    }
 }

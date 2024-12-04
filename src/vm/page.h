@@ -9,7 +9,7 @@
 enum page_type
   {
     STACK,             /* Stack page, written to swap space on eviction. */
-    MMAP_FILE,              /* A page from a memory mapped file, written back 
+    MMAP_FILE,         /* A page from a memory mapped file, written back 
                           to the file system on eviction. */
     EXEC_FILE,         /* Page from an executable file, written to the swap
                           space on eviction. */
@@ -38,6 +38,5 @@ hash_hash_func hash_spte;
 hash_less_func less_spte;
 hash_action_func destroy_spte;
 struct spt_entry *get_spt_entry (void *upage, struct thread *t);
-void remove_page_from_spt (void *upage);
 
 #endif /* vm/page.h */
