@@ -485,6 +485,7 @@ thread_create (const char *name, int priority,
     }
 
   lock_init (&t->spt_lock);
+  lock_init (&t->io_lock);
 
   bool mmap_files_success = hash_init (&t->mmap_table, mmap_file_hash, mmap_file_less, NULL);
 

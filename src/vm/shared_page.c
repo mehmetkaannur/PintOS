@@ -66,7 +66,10 @@ shared_pages_lookup (struct file *file, off_t offset)
 			frame = entry->frame;
 		}
 	
-	lock_release (&shared_pages_lock);
+  if (frame == NULL)
+    {
+    	lock_release (&shared_pages_lock);
+    }
 	
 	return frame;
 }
@@ -92,28 +95,24 @@ shared_pages_insert (struct file *file, off_t offset, void *frame)
 	return true;
 }
 
-/* Remove a shared page; returns true on success, false if not found */
-bool
+/* Remove a shared page. */
+void
 shared_pages_remove (struct file *file, off_t offset)
 {
 	struct shared_page_entry temp;
 	temp.file = file;
 	temp.offset = offset;
 
-	lock_acquire (&shared_pages_lock);
-
 	struct hash_elem *e = hash_find (&shared_pages, &temp.hash_elem);
-	if (e == NULL)
-		{
-			lock_release (&shared_pages_lock);
-			return false;
-		}
-
 	struct shared_page_entry *entry = hash_entry (e, struct shared_page_entry, hash_elem);
 	hash_delete (&shared_pages, e);
 
-	lock_release (&shared_pages_lock);
-
 	free (entry);
-	return true;
+}
+
+bool
+is_shareable (struct spt_entry *spte)
+{
+	return (spte->page_type == EXEC_FILE && !spte->writable)
+         || spte->page_type == MMAP_FILE;
 }

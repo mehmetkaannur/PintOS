@@ -122,8 +122,15 @@ struct thread
     struct file *executable;            /* The executable file of the
                                            process */
     struct lock spt_lock;               /* Lock for supplemental page
-                                           table. */
-    struct hash supp_page_table;        /* Supplemental page table. */
+                                           table. This lock is not required
+                                           when the current thread is 
+                                           examining but not modifying
+                                           the spt. */
+    struct lock io_lock;                /* Lock for handling IO fields of a
+                                           supplemental page table entry. */
+    struct hash supp_page_table;        /* Supplemental page table (spt). Only
+                                           the current thread may insert or
+                                           delete from this hash map. */
     struct hash mmap_table;             /* Hash table for memory-mapped
                                            files. */
     mapid_t next_mapid;                 /* Next available map ID. */

@@ -18,7 +18,6 @@ struct frame_reference
 struct frame_table_entry
   {
     void *frame;                    /* Kernel virtual address for frame. */
-    struct lock frame_lock;         /* Lock for frame. */
     struct list frame_references;   /* List of references to frame. */
     struct hash_elem hash_elem;     /* Hash element. */
   };

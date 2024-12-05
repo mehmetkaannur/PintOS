@@ -125,13 +125,11 @@ get_page (const void *fault_addr, const void *esp, bool write)
   struct spt_entry entry;
   entry.user_page = pg_round_down (fault_addr);
   
-  lock_acquire (&t->spt_lock);
   struct hash_elem *e = hash_find (&t->supp_page_table, &entry.elem);
 
   /* Grow stack if necessary. */
   if (e == NULL)
     {
-      lock_release (&t->spt_lock);
       return grow_stack (fault_addr, esp);
     }
 
@@ -140,26 +138,26 @@ get_page (const void *fault_addr, const void *esp, bool write)
   /* Check for write to read-only page. */
   if (write && !spte->writable) 
     {
-      lock_release (&t->spt_lock);
       return false;
     }
 
   bool swapped = false;
 
   /* If the page is read-only from a file, check if already in . */
-  void *frame = ((spte->page_type == EXEC_FILE && !spte->writable)
-                || spte->page_type == MMAP_FILE)
+  void *frame = is_shareable (spte)
               ? shared_pages_lookup (spte->file, spte->file_ofs)
               : NULL;
-  
-  if (frame == NULL)
-    {
-      lock_release (&t->spt_lock);
 
+  /* If a shared page was found in memory, we use that frame and currently
+     hold the shared_pages lock. */
+  bool found_shared = frame != NULL;
+  
+  if (!found_shared)
+    {
       /* Obtain a frame to store the page. */
       frame = get_frame (PAL_USER);
 
-      lock_acquire (&t->spt_lock);
+      lock_acquire (&t->io_lock);
 
       /* Fetch data into frame. */
       if (spte->in_swap)
@@ -179,9 +177,13 @@ get_page (const void *fault_addr, const void *esp, bool write)
               if (file_read (spte->file, frame, spte->page_read_bytes)
                   != (int) spte->page_read_bytes)
                 {
-                  lock_release (&t->spt_lock);
-                  free_frame (frame);
+                  lock_release (&t->io_lock);
                   lock_release (&filesys_lock);
+
+                  lock_acquire (&frame_table_lock);
+                  free_frame (frame);
+                  lock_release (&frame_table_lock);
+
                   PANIC ("Failed to read file into frame.");
                 }
               lock_release (&filesys_lock);
@@ -190,25 +192,34 @@ get_page (const void *fault_addr, const void *esp, bool write)
           /* Zero required number of bytes in page.*/
           memset (frame + spte->page_read_bytes, 0, spte->page_zero_bytes);
 
-          if ((spte->page_type == EXEC_FILE && !spte->writable)
-              || spte->page_type == MMAP_FILE)
+          if (is_shareable (spte))
             {
               /* Add page to shared pages hash map. */
               shared_pages_insert (spte->file, spte->file_ofs, frame);
             }
         }
 
+      lock_release (&t->io_lock);
     }
 
   /* Point page table entry for faulting address to frame. */
   bool success = pagedir_set_page (t->pagedir, spte->user_page,
                                    frame, spte->writable);
+  
+  if (found_shared)
+    {
+      lock_release (&shared_pages_lock);
+    }
+
   if (!success)
     {
+      lock_acquire (&frame_table_lock);
       free_frame (frame);
+      lock_release (&frame_table_lock);
     }
   else
     {
+      lock_acquire (&t->spt_lock);
       if (swapped)
         {
           pagedir_set_dirty (t->pagedir, spte->user_page, true);
@@ -217,9 +228,8 @@ get_page (const void *fault_addr, const void *esp, bool write)
       /* Update supplemental page table entry. */
       spte->in_memory = true;
       spte->kpage = frame;
+      lock_release (&t->spt_lock);
     }
-
-  lock_release (&t->spt_lock);
 
   return success;
 }
