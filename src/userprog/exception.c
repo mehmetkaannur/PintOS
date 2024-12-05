@@ -144,6 +144,7 @@ get_page (const void *fault_addr, const void *esp, bool write)
   bool swapped = false;
 
   /* If the page is read-only from a file, check if already in . */
+	lock_acquire (&shared_pages_lock);
   void *frame = is_shareable (spte)
               ? shared_pages_lookup (spte->file, spte->file_ofs)
               : NULL;
@@ -154,6 +155,8 @@ get_page (const void *fault_addr, const void *esp, bool write)
   
   if (!found_shared)
     {
+      lock_release (&shared_pages_lock);
+
       /* Obtain a frame to store the page. */
       frame = get_frame (PAL_USER);
 
@@ -184,7 +187,9 @@ get_page (const void *fault_addr, const void *esp, bool write)
                   free_frame (frame);
                   lock_release (&frame_table_lock);
 
-                  PANIC ("Failed to read file into frame.");
+                  /* Reached the end of the file without reading enough
+                     bytes. */
+                  return false;
                 }
               lock_release (&filesys_lock);
             }
@@ -195,7 +200,9 @@ get_page (const void *fault_addr, const void *esp, bool write)
           if (is_shareable (spte))
             {
               /* Add page to shared pages hash map. */
+              lock_acquire (&shared_pages_lock);
               shared_pages_insert (spte->file, spte->file_ofs, frame);
+              lock_release (&shared_pages_lock);
             }
         }
 
