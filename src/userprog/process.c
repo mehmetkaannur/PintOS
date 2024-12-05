@@ -446,14 +446,20 @@ process_exit (void)
   hash_destroy (&cur->fd_file_map, fd_file_destroy);
   lock_release (&filesys_lock);
 
+  lock_acquire (&shared_pages_lock);
+
   /* Hold frame table lock while clearing up spt and frame table to 
      ensure an intermediate state cannot be seen. */
   lock_acquire (&frame_table_lock);
 
   /* Free all supplemental page table entries and associated resources. */
   lock_acquire (&cur->spt_lock);
+  lock_acquire (&cur->io_lock);
   hash_destroy (&cur->supp_page_table, destroy_spte);
+  lock_release (&cur->io_lock);
   lock_release (&cur->spt_lock);
+  
+  lock_release (&shared_pages_lock);
   
   /* Unmap all memory-mapped files. */
   hash_destroy (&cur->mmap_table, mmap_file_destroy);

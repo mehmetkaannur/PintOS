@@ -668,6 +668,7 @@ sys_munmap (void *argv[], void *esp UNUSED)
       
       lock_acquire (&frame_table_lock);
       lock_acquire (&t->spt_lock);
+      lock_acquire (&t->io_lock);
 
       struct spt_entry *spte = get_spt_entry (upage, t);
       hash_delete (&t->supp_page_table, &spte->elem);
@@ -675,6 +676,7 @@ sys_munmap (void *argv[], void *esp UNUSED)
       destroy_spte (&spte->elem, NULL);
       free_frame (frame);
       
+      lock_release (&t->io_lock);
       lock_release (&t->spt_lock);
       lock_release (&frame_table_lock);
 

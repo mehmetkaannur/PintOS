@@ -129,8 +129,6 @@ evict_frame (void)
      for eviction by another thread. */
   hash_delete (&frame_table, &f->hash_elem);
 
-  lock_release (&frame_table_lock);
-
   /* Sort frame references to ensure lock ordering. */
   list_sort (&f->frame_references, frame_reference_less, NULL);
 
@@ -145,6 +143,8 @@ evict_frame (void)
       lock_acquire (&fr->owner->io_lock);
       pagedir_clear_page (fr->pd, fr->upage);
     }
+
+  lock_release (&frame_table_lock);
 
   size_t swap_slot;
   bool swapped = false;
