@@ -18,19 +18,25 @@ enum page_type
 /* Supplemental page table (SPT) entry. */
 struct spt_entry
   {
+    /* The following fields remain constant after being initialised for
+       lazy loading or as stack pages. */
     struct hash_elem elem;        /* Hash element for thread's
                                      supplemental page table. */
-    bool in_memory;               /* Indicates if page is in memory. */
-    bool in_swap;                 /* Indicates if page is in swap space. */
-    bool is_pinned;               /* Indicates if page is pinned. */
     uint8_t *user_page;           /* User virtual page. */
-    void *kpage;                  /* Kernel virtual page if in memory. */
     enum page_type page_type;     /* Type of page wrt. eviction. */
-    bool writable;                /* Indicates if page is writable. */
     struct file *file;            /* Pointer to file for page. */
     uint32_t file_ofs;            /* Offset in file to read data from. */
     uint32_t page_read_bytes;     /* Number of bytes to read from file. */
     uint32_t page_zero_bytes;     /* Number of bytes to zero in page. */
+    bool writable;                /* Indicates if page is writable. (Note
+                                     this field may be updated during the
+                                     lazy loading spt setup but not after). */
+
+    /* The following fields may change after initialisation. */
+    bool in_memory;               /* Indicates if page is in memory. */
+    bool in_swap;                 /* Indicates if page is in swap space. */
+    bool is_pinned;               /* Indicates if page is pinned. */
+    void *kpage;                  /* Kernel virtual page if in memory. */
     size_t swap_slot;             /* Swap slot if in swap space. */
   };
 
