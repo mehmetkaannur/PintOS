@@ -461,11 +461,6 @@ process_exit (void)
   
   lock_release (&shared_pages_lock);
   
-  /* Unmap all memory-mapped files. */
-  lock_acquire (&filesys_lock);
-  hash_destroy (&cur->mmap_table, mmap_file_destroy);
-  lock_release (&filesys_lock);
-
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   uint32_t *pd;
@@ -485,6 +480,11 @@ process_exit (void)
     }
   
   lock_release (&frame_table_lock);
+
+  /* Unmap all memory-mapped files. */
+  lock_acquire (&filesys_lock);
+  hash_destroy (&cur->mmap_table, mmap_file_destroy);
+  lock_release (&filesys_lock);
 
   /* Allow write access and close the executable file */
   if (cur->executable != NULL)

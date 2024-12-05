@@ -661,30 +661,33 @@ sys_munmap (void *argv[], void *esp UNUSED)
   size_t length = mmap_file->length;
   size_t offset = 0;
 
+  lock_acquire (&frame_table_lock);
+  lock_acquire (&t->io_lock);
+  lock_acquire (&t->spt_lock);
+
   while (length > 0) 
     {
       size_t page_read_bytes = length < PGSIZE ? length : PGSIZE;
       void *upage = addr + offset;
       
-      lock_acquire (&frame_table_lock);
-      lock_acquire (&t->spt_lock);
-      lock_acquire (&t->io_lock);
-
       struct spt_entry *spte = get_spt_entry (upage, t);
       hash_delete (&t->supp_page_table, &spte->elem);
       void *frame = spte->kpage;
       destroy_spte (&spte->elem, NULL);
       free_frame (frame);
       
-      lock_release (&t->io_lock);
-      lock_release (&t->spt_lock);
-      lock_release (&frame_table_lock);
-
       offset += PGSIZE;
       length -= page_read_bytes;
     }
 
+  lock_release (&t->spt_lock);
+  lock_release (&t->io_lock);
+  lock_release (&frame_table_lock);
+
+  lock_acquire (&filesys_lock);
   file_close (mmap_file->file);
+  lock_release (&filesys_lock);
+
   hash_delete (&t->mmap_table, &mmap_file->elem);
   free (mmap_file);
 }

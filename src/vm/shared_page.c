@@ -54,8 +54,6 @@ shared_pages_lookup (struct file *file, off_t offset)
 	temp.file = file;
 	temp.offset = offset;
 
-	lock_acquire (&shared_pages_lock);
-
 	struct hash_elem *e = hash_find (&shared_pages, &temp.hash_elem);
 	struct frame *frame = NULL;
 	if (e != NULL)
@@ -65,11 +63,6 @@ shared_pages_lookup (struct file *file, off_t offset)
 														        	 							hash_elem);
 			frame = entry->frame;
 		}
-	
-  if (frame == NULL)
-    {
-    	lock_release (&shared_pages_lock);
-    }
 	
 	return frame;
 }
@@ -88,9 +81,7 @@ shared_pages_insert (struct file *file, off_t offset, void *frame)
 	new_entry->offset = offset;
 	new_entry->frame = frame;
 
-	lock_acquire (&shared_pages_lock);
 	hash_insert (&shared_pages, &new_entry->hash_elem);
-	lock_release (&shared_pages_lock);
 	
 	return true;
 }

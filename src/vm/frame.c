@@ -290,9 +290,7 @@ free_frame (void *kpage)
   if (shared)
     {
       /* Put frame table entry back into frame table. */
-      lock_acquire (&frame_table_lock);
       hash_insert (&frame_table, &fte->hash_elem);
-      lock_release (&frame_table_lock);
 
       return;
     }
