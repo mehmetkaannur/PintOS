@@ -125,18 +125,15 @@ get_page (const void *fault_addr, const void *esp, bool write)
   struct spt_entry entry;
   entry.user_page = pg_round_down (fault_addr);
   
-  lock_acquire (&t->spt_lock);
   struct hash_elem *e = hash_find (&t->supp_page_table, &entry.elem);
 
   /* Grow stack if necessary. */
   if (e == NULL)
     {
-      lock_release (&t->spt_lock);
       return grow_stack (fault_addr, esp);
     }
 
   struct spt_entry *spte = hash_entry (e, struct spt_entry, elem);
-  lock_release (&t->spt_lock);
 
   /* Check for write to read-only page. */
   if (write && !spte->writable) 

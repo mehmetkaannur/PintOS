@@ -797,7 +797,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       struct spt_entry entry;
       entry.user_page = upage;
 
-      lock_acquire (&t->spt_lock); 
       struct hash_elem *e = hash_find (&t->supp_page_table, &entry.elem);
 
       if (e == NULL)
@@ -830,7 +829,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
               spte->writable = true;
             }
         }
-      lock_release (&t->spt_lock);
 
       /* Advance. */
       read_bytes -= page_read_bytes;
