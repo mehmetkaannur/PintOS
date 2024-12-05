@@ -169,6 +169,8 @@ get_page (const void *fault_addr, const void *esp, bool write)
           swap_in (frame, spte->swap_slot);
           spte->in_swap = false;
           swapped = true;
+
+          lock_release (&t->io_lock);
         }
       else
         {
@@ -197,6 +199,8 @@ get_page (const void *fault_addr, const void *esp, bool write)
           /* Zero required number of bytes in page.*/
           memset (frame + spte->page_read_bytes, 0, spte->page_zero_bytes);
 
+          lock_release (&t->io_lock);
+
           if (is_shareable (spte))
             {
               /* Add page to shared pages hash map. */
@@ -205,8 +209,6 @@ get_page (const void *fault_addr, const void *esp, bool write)
               lock_release (&shared_pages_lock);
             }
         }
-
-      lock_release (&t->io_lock);
     }
 
   /* Point page table entry for faulting address to frame. */
