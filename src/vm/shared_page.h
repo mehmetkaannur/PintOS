@@ -33,4 +33,7 @@ bool shared_pages_insert (struct file *file, off_t offset, void *frame);
 /* Remove a shared page; returns true on success, false if not found */
 bool shared_pages_remove (struct file *file, off_t offset);
 
+/* Check if page is shareable using spt entry. */
+bool is_shareable (struct spt_entry *spte);
+
 #endif /* VM_SHARED_PAGE_H */

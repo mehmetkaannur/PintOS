@@ -43,7 +43,7 @@ evict_frame (void)
   ASSERT (!hash_empty (&frame_table));
 
   void *frame = NULL;
-  bool shared = false;
+  bool shareable = false;
 
   lock_acquire (&shared_pages_lock);
   lock_acquire (&frame_table_lock);
@@ -63,12 +63,20 @@ evict_frame (void)
 
       f = hash_entry (hash_cur (&i), struct frame_table_entry, hash_elem);
       
-      shared = list_size (&f->frame_references) > 1;
-        
+      /* Check if frame is shareable. */
+      struct list_elem *el = list_begin (&f->frame_references);
+      struct frame_reference *fr = list_entry (el,
+                                               struct frame_reference,
+                                               elem);
+      lock_acquire (&fr->owner->spt_lock);
+      struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
+      lock_release (&fr->owner->spt_lock);
+
+      shareable = is_shareable (spte);
+
       /* Iterate frame references to see if frame was accessed by any page
          referring to it. */
       bool accessed = false;
-      struct list_elem *el; 
       for (el = list_begin (&f->frame_references);
           el != list_end (&f->frame_references);
           el = list_next (el))
@@ -101,17 +109,18 @@ evict_frame (void)
         }
     }
 
-  if (shared)
+  if (shareable)
     {
-      /* Remove shared page from shared pages hash map. */
+      /* Remove shareable page from shared pages hash map. */
       struct list_elem *el = list_begin (&f->frame_references);
       struct frame_reference *fr = list_entry (el,
                                                struct frame_reference,
                                                elem);
       lock_acquire (&fr->owner->spt_lock);
       struct spt_entry *spte = get_spt_entry (fr->upage, fr->owner);
-      shared_pages_remove (spte->file, spte->file_ofs);
       lock_release (&fr->owner->spt_lock);
+
+      shared_pages_remove (spte->file, spte->file_ofs);
     }
 
   lock_release (&shared_pages_lock);

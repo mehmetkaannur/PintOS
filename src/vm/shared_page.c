@@ -120,3 +120,10 @@ shared_pages_remove (struct file *file, off_t offset)
 	free (entry);
 	return true;
 }
+
+bool
+is_shareable (struct spt_entry *spte)
+{
+	return (spte->page_type == EXEC_FILE && !spte->writable)
+         || spte->page_type == MMAP_FILE;
+}
