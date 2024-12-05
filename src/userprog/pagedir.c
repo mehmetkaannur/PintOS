@@ -144,7 +144,6 @@ pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
 
           /* Set up frame table entry. */
           fte->frame = kpage;
-          lock_init (&fte->frame_lock);
           list_init (&fte->frame_references);
 
           hash_insert (&frame_table, &fte->hash_elem);
@@ -154,9 +153,7 @@ pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
           fte = hash_entry (e, struct frame_table_entry, hash_elem);
         }
 
-      lock_acquire (&fte->frame_lock);
       list_push_back (&fte->frame_references, &fr->elem);
-      lock_release (&fte->frame_lock);
 
       lock_release (&frame_table_lock);
 

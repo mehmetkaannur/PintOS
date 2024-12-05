@@ -63,8 +63,6 @@ evict_frame (void)
 
       f = hash_entry (hash_cur (&i), struct frame_table_entry, hash_elem);
       
-      lock_acquire (&f->frame_lock);
-
       shared = list_size (&f->frame_references) > 1;
         
       /* Iterate frame references to see if frame was accessed by any page
@@ -101,8 +99,6 @@ evict_frame (void)
           frame = f->frame;
           break;
         }
-
-      lock_release (&f->frame_lock);
     }
 
   if (shared)
@@ -208,8 +204,6 @@ evict_frame (void)
       free (fr);
     }
 
-  lock_release (&f->frame_lock);
-
   free (f);
 
   /* Free frame being evicted. */
@@ -268,7 +262,6 @@ free_frame (void *kpage)
   struct list_elem *el = list_begin (&fte->frame_references);
 
   /* Remove all references to this frame. */
-  lock_acquire (&fte->frame_lock);
   bool shared = false;
   while (el != list_end (&fte->frame_references))
     {
@@ -286,7 +279,6 @@ free_frame (void *kpage)
           free (fr);
         }
     }
-  lock_release (&fte->frame_lock);
 
   /* If page is shared don't free frame. */
   if (shared)
