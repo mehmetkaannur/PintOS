@@ -453,16 +453,18 @@ process_exit (void)
   lock_acquire (&frame_table_lock);
 
   /* Free all supplemental page table entries and associated resources. */
-  lock_acquire (&cur->spt_lock);
   lock_acquire (&cur->io_lock);
+  lock_acquire (&cur->spt_lock);
   hash_destroy (&cur->supp_page_table, destroy_spte);
-  lock_release (&cur->io_lock);
   lock_release (&cur->spt_lock);
+  lock_release (&cur->io_lock);
   
   lock_release (&shared_pages_lock);
   
   /* Unmap all memory-mapped files. */
+  lock_acquire (&filesys_lock);
   hash_destroy (&cur->mmap_table, mmap_file_destroy);
+  lock_release (&filesys_lock);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

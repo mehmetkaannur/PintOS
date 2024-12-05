@@ -31,7 +31,7 @@ void *shared_pages_lookup (struct file *file, off_t offset);
 bool shared_pages_insert (struct file *file, off_t offset, void *frame);
 
 /* Remove a shared page; returns true on success, false if not found */
-bool shared_pages_remove (struct file *file, off_t offset);
+void shared_pages_remove (struct file *file, off_t offset);
 
 /* Check if page is shareable using spt entry. */
 bool is_shareable (struct spt_entry *spte);
