@@ -671,17 +671,18 @@ sys_munmap (void *argv[], void *esp UNUSED)
       size_t page_read_bytes = length < PGSIZE ? length : PGSIZE;
       void *upage = addr + offset;
       
+      lock_acquire (&frame_table_lock);
       lock_acquire (&t->spt_lock);
 
       struct spt_entry *spte = get_spt_entry (upage, t);
       hash_delete (&t->supp_page_table, &spte->elem);
       void *frame = spte->kpage;
       destroy_spte (&spte->elem, NULL);
-
-      lock_release (&t->spt_lock);
-
       free_frame (frame);
       
+      lock_release (&t->spt_lock);
+      lock_release (&frame_table_lock);
+
       offset += PGSIZE;
       length -= page_read_bytes;
     }

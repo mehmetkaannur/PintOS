@@ -240,7 +240,9 @@ get_frame (enum palloc_flags flags)
   return kpage;
 }
 
-/* Free frame containing user page with kernel virtual address KPAGE. */
+/* Free frame containing user page with kernel virtual address KPAGE,
+   if this frame is allocated in memory. Must hold frame_table_lock
+   on entry to this function. */
 void
 free_frame (void *kpage)
 {
@@ -248,24 +250,19 @@ free_frame (void *kpage)
   i.frame = kpage;
 
   /* Find relevant frame table entry from frame table. */
-  lock_acquire (&frame_table_lock);
   struct hash_elem *e = hash_find (&frame_table, &i.hash_elem);
 
-  /* If frame entry cannot be found in frame table, another thread has chosen
-     to evict the frame and will free it. */
+  /* If frame entry cannot be found in frame table, return. */
   if (e == NULL)
     {
-      lock_release (&frame_table_lock);
       return;
     }
   
   struct frame_table_entry *fte = hash_entry (e, struct frame_table_entry,
                                               hash_elem);
 
-  /* Remove frame table entry, to prevent frame being chosen for eviction. */
+  /* Remove frame table entry. */
   hash_delete (&frame_table, e);
-
-  lock_release (&frame_table_lock);
 
   struct thread *t = thread_current ();
   struct list_elem *el = list_begin (&fte->frame_references);

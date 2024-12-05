@@ -221,7 +221,9 @@ grow_stack (const void *uaddr, const void *esp)
                                            true);
           if (!success)
             {
+              lock_acquire (&frame_table_lock);
               free_frame (frame);
+              lock_release (&frame_table_lock);
             }
           else
             {
@@ -444,6 +446,10 @@ process_exit (void)
   hash_destroy (&cur->fd_file_map, fd_file_destroy);
   lock_release (&filesys_lock);
 
+  /* Hold frame table lock while clearing up spt and frame table to 
+     ensure an intermediate state cannot be seen. */
+  lock_acquire (&frame_table_lock);
+
   /* Free all supplemental page table entries and associated resources. */
   lock_acquire (&cur->spt_lock);
   hash_destroy (&cur->supp_page_table, destroy_spte);
@@ -469,6 +475,8 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  
+  lock_release (&frame_table_lock);
 
   /* Allow write access and close the executable file */
   if (cur->executable != NULL)
@@ -872,7 +880,11 @@ setup_stack (void **esp)
           lock_release (&t->spt_lock);
         }
       else
-        free_frame (kpage);
+        {
+          lock_acquire (&frame_table_lock);
+          free_frame (kpage);
+          lock_release (&frame_table_lock);
+        }
     }
   return success;
 }

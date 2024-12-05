@@ -182,7 +182,11 @@ get_page (const void *fault_addr, const void *esp, bool write)
                 {
                   lock_release (&t->io_lock);
                   lock_release (&filesys_lock);
+
+                  lock_acquire (&frame_table_lock);
                   free_frame (frame);
+                  lock_release (&frame_table_lock);
+
                   PANIC ("Failed to read file into frame.");
                 }
               lock_release (&filesys_lock);
@@ -212,7 +216,9 @@ get_page (const void *fault_addr, const void *esp, bool write)
 
   if (!success)
     {
+      lock_acquire (&frame_table_lock);
       free_frame (frame);
+      lock_release (&frame_table_lock);
     }
   else
     {
