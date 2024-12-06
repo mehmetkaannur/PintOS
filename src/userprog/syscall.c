@@ -37,20 +37,20 @@ static int sys_write (void *argv[], void *esp);
 static void sys_seek (void *argv[], void *esp UNUSED);
 static unsigned sys_tell (void *argv[], void *esp UNUSED);
 static void sys_close (void *argv[], void *esp UNUSED);
-static mapid_t sys_mmap (void *argv[], void *esp);
+static mapid_t sys_mmap (void *argv[], void *esp UNUSED);
 static void sys_munmap (void *argv[], void *esp UNUSED);
-static bool sys_chdir (void *argv[], void *esp UNUSED);
-static bool sys_mkdir (void *argv[], void *esp UNUSED);
-static bool sys_readdir (void *argv[], void *esp UNUSED);
-static bool sys_isdir (void *argv[], void *esp UNUSED);
-static int sys_inumber (void *argv[], void *esp UNUSED);
+static bool sys_chdir (void *argv[] UNUSED, void *esp UNUSED);
+static bool sys_mkdir (void *argv[] UNUSED, void *esp UNUSED);
+static bool sys_readdir (void *argv[] UNUSED, void *esp UNUSED);
+static bool sys_isdir (void *argv[] UNUSED, void *esp UNUSED);
+static int sys_inumber (void *argv[] UNUSED, void *esp UNUSED);
 
 static void syscall_handler (struct intr_frame *);
 
 typedef void *(*syscall_func_t) (void *argv[], void *esp);
 
 static void validate_user_pointer (const void *uaddr, void *esp, bool write);
-static void validate_user_string (const char *uaddr, int max_len, void *esp,
+static bool validate_user_string (const char *uaddr, int max_len, void *esp,
                                   bool write);
 static void validate_user_data (const void *uaddr, unsigned size, void *esp,
                                 bool write);
@@ -138,8 +138,9 @@ validate_user_pointer (const void *uaddr, void *esp, bool write)
     }
 }
 
-/* Validate a string UADDR provided by user with max length MAX_LEN. */
-static void
+/* Validate a string UADDR provided by user with max length MAX_LEN.
+   Returns true if the string has length less than max_len. */
+static bool
 validate_user_string (const char *uaddr, int max_len, void *esp, bool write)
 {
   for (int i = 0; i < max_len; i++)
@@ -147,10 +148,10 @@ validate_user_string (const char *uaddr, int max_len, void *esp, bool write)
       validate_user_pointer (uaddr + i, esp, write);
       if (uaddr[i] == '\0')
         {
-          return;
+          return true;
         }
     }
-  thread_exit ();
+  return false;
 }
 
 /* Validates user data of given size. */
@@ -189,7 +190,8 @@ get_file_from_fd (int fd)
   return hash_entry (e, struct fd_file, hash_elem)->file;
 }
 
-/* Check if the new mapping overlaps existing mappings in virtual address space. */
+/* Returns true iff the new mapping overlaps existing mappings
+   in virtual address space for this user process. */
 static bool
 check_overlap (void *addr, size_t length)
 {
@@ -199,9 +201,11 @@ check_overlap (void *addr, size_t length)
 
   while (size > 0) 
     {
+      /* If there is an existing spt entry at upage, then the new mapping
+         overlaps with existing mappings. */
       if (get_spt_entry (upage, t) != NULL)
         {
-          return true; /* Overlaps with existing mapping */
+          return true;
         }
       upage += PGSIZE;
       size -= size > PGSIZE ? PGSIZE : size;
@@ -271,7 +275,10 @@ static pid_t
 sys_exec (void *argv[], void *esp)
 {
   const char *cmd_line = (const char *) argv[0];
-  validate_user_string (cmd_line, PGSIZE, esp, false);
+  if (!validate_user_string (cmd_line, PGSIZE, esp, false))
+    {
+      return SYS_ERROR;
+    }
   
   tid_t tid = process_execute (cmd_line);
 
@@ -313,7 +320,10 @@ sys_create (void *argv[], void *esp)
   unsigned initial_size = (unsigned) argv[1];
   
   /* Check if file name is valid. */
-  validate_user_data (file, READDIR_MAX_LEN, esp, false);
+  if (!validate_user_string (file, READDIR_MAX_LEN, esp, false))
+    {
+      return false;
+    }
   
   /* Create file in file system. */
   lock_acquire (&filesys_lock);
@@ -330,7 +340,10 @@ sys_remove (void *argv[], void *esp)
   const char *file = (const char *) argv[0];
 
   /* Check if file name is valid. */
-  validate_user_data (file, READDIR_MAX_LEN, esp, false);
+  if (!validate_user_string (file, READDIR_MAX_LEN, esp, false))
+    {
+      return false;
+    }
 
   /* Remove file from file system. */
   lock_acquire (&filesys_lock);
@@ -347,7 +360,10 @@ sys_open (void *argv[], void *esp)
   const char *file_name = (const char *) argv[0];
 
   /* Check if file name is valid. */
-  validate_user_string (file_name, READDIR_MAX_LEN, esp, false);
+  if (!validate_user_string (file_name, READDIR_MAX_LEN, esp, false))
+    {
+      return SYS_ERROR;
+    }
 
   /* Open file in file system. */
   lock_acquire (&filesys_lock);

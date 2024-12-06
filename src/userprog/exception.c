@@ -125,6 +125,10 @@ get_page (const void *fault_addr, const void *esp, bool write)
   struct spt_entry entry;
   entry.user_page = pg_round_down (fault_addr);
   
+  /* Note that we do not need to acquire the spt lock here as this call
+     examines but does not modify the spt. Since only the current thread
+     can insert or delete from the spt, there is no risk of that happening
+     at this point. */
   struct hash_elem *e = hash_find (&t->supp_page_table, &entry.elem);
 
   /* Grow stack if necessary. */
