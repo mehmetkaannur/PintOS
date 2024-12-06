@@ -18,10 +18,12 @@
 #include "vm/page.h"
 #include "vm/frame.h"
 
+/* Maximum stack size of 8MB.*/
+#define MAX_STACK_SIZE (1 << 23)
+#define STACK_LIMIT ((void *) PHYS_BASE - MAX_STACK_SIZE)
 #define CONSOLE_BUFFER_SIZE 100
 #define SYS_ERROR -1
 #define WORD_SIZE 4
-#define STACK_MAX (8 * 1024 * 1024)  // 8 MB
 
 /* Functions to handle syscalls. */
 static void sys_halt (void *argv[] UNUSED, void *esp UNUSED);
@@ -100,14 +102,13 @@ validate_user_pointer (const void *uaddr, void *esp, bool write)
       thread_exit ();
     }
 
-  struct spt_entry entry;
-  entry.user_page = pg_round_down (uaddr);
-
-  struct hash_elem *e = hash_find (&t->supp_page_table, &entry.elem);
-
   /* Check if uaddr is unmapped virtual memory. */
   if (pagedir_get_page (t->pagedir, uaddr) == NULL)
     {
+      struct spt_entry entry;
+      entry.user_page = pg_round_down (uaddr);
+
+      struct hash_elem *e = hash_find (&t->supp_page_table, &entry.elem);
       if (e == NULL && !is_stack_access (uaddr, esp))
         {
           thread_exit ();
@@ -602,6 +603,7 @@ sys_mmap (void *argv[], void *esp UNUSED)
   int fd = (int) argv[0];
   void *addr = argv[1];
 
+  /* Find file based on file descriptor FD. */
   struct file *file = get_file_from_fd (fd);
   if (file == NULL) 
     {
@@ -612,15 +614,17 @@ sys_mmap (void *argv[], void *esp UNUSED)
   size_t length = file_length (file);
   lock_release (&filesys_lock);
 
+  /* Ensure file is not empty. */
   if (length == 0) 
     {
       return SYS_ERROR;
     }
 
-  /* Ensure addr is a valid user address and is page aligned. */
+  /* Ensure addr is not 0, is page aligned and does not overlap the space
+     reversed for the stack. */
   if (addr == 0
       || pg_ofs (addr) != 0
-      || !is_user_vaddr (addr + length - 1)) 
+      || addr + length - 1 >= STACK_LIMIT) 
     {
       return SYS_ERROR;
     }
@@ -631,6 +635,7 @@ sys_mmap (void *argv[], void *esp UNUSED)
       return SYS_ERROR;
     }
 
+  /* Get new file reference for mmapped file. */
   file = file_reopen (file);
   if (file == NULL) 
     {
@@ -646,6 +651,7 @@ sys_mmap (void *argv[], void *esp UNUSED)
 
   struct thread *t = thread_current ();
 
+  /* Initialize mmap_file struct. */
   mmap_file->file = file;
   mmap_file->addr = addr;
   mmap_file->length = length;
