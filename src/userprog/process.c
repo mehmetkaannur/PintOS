@@ -32,6 +32,7 @@
 #define NUM_ADDITIONAL_STACK_ADDRS 4
 #define PUSHA_SIZE 32
 #define PUSH_SIZE 4
+#define STACK_LIMIT ((void *) PHYS_BASE - MAX_STACK_SIZE)
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -248,7 +249,7 @@ is_stack_access (const void *uaddr, const void *esp)
     }
 
   /* Check for stack that is too large. */
-  if (uaddr < PHYS_BASE - MAX_STACK_SIZE)
+  if (uaddr < STACK_LIMIT) 
     {
       return false;
     }
