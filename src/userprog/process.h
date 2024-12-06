@@ -31,6 +31,7 @@ int process_wait (tid_t);
 void process_exit (void);
 void process_activate (void);
 
-bool grow_stack (const void *uaddr, const void *esp);
+bool is_stack_access (const void *uaddr, const void *esp);
+void grow_stack (const void *uaddr);
 
 #endif /* userprog/process.h */

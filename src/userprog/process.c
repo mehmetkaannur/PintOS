@@ -191,9 +191,54 @@ process_execute (const char *command)
   return tid;
 }
 
-/* Grow user stack if required. */
+/* Grow user stack. */
+void
+grow_stack (const void *uaddr)
+{
+  struct thread *cur = thread_current ();
+  void *frame = get_frame (PAL_USER);
+  if (frame == NULL)
+    {
+      thread_exit ();
+    }
+  
+  bool success = pagedir_set_page (cur->pagedir, pg_round_down (uaddr),
+                                   frame, true);
+  if (!success)
+    {
+      lock_acquire (&frame_table_lock);
+      free_frame (frame);
+      lock_release (&frame_table_lock);
+
+      thread_exit ();
+    }
+  else
+    {
+      /* Add entry for page in supplemental page table. */
+      struct spt_entry *spte = malloc (sizeof (struct spt_entry));
+      if (spte == NULL)
+        {
+          thread_exit ();
+        }
+
+      spte->in_memory = true;
+      spte->is_pinned = false;
+      spte->user_page = pg_round_down (uaddr);
+      spte->page_type = STACK;
+      spte->in_swap = false;
+      spte->writable = true;
+      spte->kpage = frame;
+
+      lock_acquire (&cur->spt_lock);
+      hash_insert (&cur->supp_page_table, &spte->elem);         
+      lock_release (&cur->spt_lock);
+    }
+}
+
+/* Returns true iff UADDR is a potential stack page given
+   stack pointer ESP. */
 bool
-grow_stack (const void *uaddr, const void *esp)
+is_stack_access (const void *uaddr, const void *esp)
 {
   /* Check we are handling a user virtual address. */
   if (is_kernel_vaddr (uaddr))
@@ -209,48 +254,7 @@ grow_stack (const void *uaddr, const void *esp)
 
   /* Check for stack growth request. */  
   int diff = esp - uaddr;
-  if (uaddr >= esp || diff == PUSHA_SIZE || diff == PUSH_SIZE)
-    {
-      struct thread *cur = thread_current ();
-      void *frame = get_frame (PAL_USER);
-      if (frame != NULL)
-        {
-          bool success = pagedir_set_page (cur->pagedir,
-                                           pg_round_down (uaddr),
-                                           frame,
-                                           true);
-          if (!success)
-            {
-              lock_acquire (&frame_table_lock);
-              free_frame (frame);
-              lock_release (&frame_table_lock);
-            }
-          else
-            {
-              /* Add entry for page in supplemental page table. */
-              struct spt_entry *spte = malloc (sizeof (struct spt_entry));
-              if (spte == NULL)
-                {
-                  return false;
-                }
-
-              spte->in_memory = true;
-              spte->is_pinned = false;
-              spte->user_page = pg_round_down (uaddr);
-              spte->page_type = STACK;
-              spte->in_swap = false;
-              spte->writable = true;
-              spte->kpage = frame;
-
-              lock_acquire (&cur->spt_lock);
-              hash_insert (&cur->supp_page_table, &spte->elem);         
-              lock_release (&cur->spt_lock);
-            }
-          return success;
-        }
-    }
-  return false;
-
+  return uaddr >= esp || diff == PUSHA_SIZE || diff == PUSH_SIZE;
 }
 
 /* Push argument ARG of size SIZE to stack given by ESP. */

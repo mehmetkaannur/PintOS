@@ -134,7 +134,12 @@ get_page (const void *fault_addr, const void *esp, bool write)
   /* Grow stack if necessary. */
   if (e == NULL)
     {
-      return grow_stack (fault_addr, esp);
+      bool is_stack = is_stack_access (fault_addr, esp);
+      if (is_stack)
+        {
+          grow_stack (fault_addr);
+        }
+      return is_stack;
     }
 
   struct spt_entry *spte = hash_entry (e, struct spt_entry, elem);
