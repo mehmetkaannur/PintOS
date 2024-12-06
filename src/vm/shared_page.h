@@ -9,15 +9,6 @@
 #include "threads/synch.h"
 #include "filesys/off_t.h"
 
-/* Entry in the shared pages hash map */
-struct shared_page_entry
-	{
-    struct file *file;                 /* File backing the page */
-    off_t offset;                      /* Offset within the file */
-    void *frame;                       /* Frame containing the page */
-    struct hash_elem hash_elem;        /* Hash element */
-	};
-
 /* Lock to access shared_pages hash map. */
 struct lock shared_pages_lock;
 
