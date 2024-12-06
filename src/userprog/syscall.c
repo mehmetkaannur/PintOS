@@ -127,7 +127,7 @@ validate_user_pointer (const void *uaddr, void *esp, bool write)
 static bool
 validate_user_string (const char *uaddr, int max_len, void *esp, bool write)
 {
-  for (int i = 0; i < max_len; i++)
+  for (int i = 0; i <= max_len; i++)
     {
       validate_user_pointer (uaddr + i, esp, write);
       if (uaddr[i] == '\0')
@@ -309,9 +309,19 @@ sys_create (void *argv[], void *esp)
       return false;
     }
   
+  /* Use buffer from kernel space to prevent page-fault during file-system
+     access. */
+  size_t len = strlen (file);
+  char *kbuffer = malloc (len + 1);
+  if (kbuffer == NULL) 
+    {
+      return false;
+    }
+  memcpy (kbuffer, file, len + 1);
+
   /* Create file in file system. */
   lock_acquire (&filesys_lock);
-  bool success = filesys_create (file, initial_size);
+  bool success = filesys_create (kbuffer, initial_size);
   lock_release (&filesys_lock);
 
   return success;
@@ -329,9 +339,19 @@ sys_remove (void *argv[], void *esp)
       return false;
     }
 
+  /* Use buffer from kernel space to prevent page-fault during file-system
+     access. */
+  size_t len = strlen (file);
+  char *kbuffer = malloc (len + 1);
+  if (kbuffer == NULL) 
+    {
+      return false;
+    }
+  memcpy (kbuffer, file, len + 1);
+  
   /* Remove file from file system. */
   lock_acquire (&filesys_lock);
-  bool success = filesys_remove (file);
+  bool success = filesys_remove (kbuffer);
   lock_release (&filesys_lock);
 
   return success;
@@ -349,6 +369,16 @@ sys_open (void *argv[], void *esp)
       return SYS_ERROR;
     }
 
+  /* Use buffer from kernel space to prevent page-fault during file-system
+     access. */
+  size_t len = strlen (file_name);
+  char *kbuffer = malloc (len + 1);
+  if (kbuffer == NULL) 
+    {
+      return false;
+    }
+  memcpy (kbuffer, file_name, len + 1);
+  
   /* Open file in file system. */
   lock_acquire (&filesys_lock);
   struct file *file = filesys_open (file_name);
@@ -431,6 +461,8 @@ sys_read (void *argv[], void *esp)
       return SYS_ERROR;
     }
 
+  /* Read from file one page at a time. Use buffer from kernel space
+     to prevent page-fault during filesystem access. */
   int bytes_read = 0;
   for (unsigned i = 0; i < size; i += PGSIZE) 
     {
@@ -480,12 +512,13 @@ sys_write (void *argv[], void *esp)
     }
 
   void *kbuffer = palloc_get_page (0);
-
   if (kbuffer == NULL) 
     {
       return SYS_ERROR;
     }
 
+  /* Write to file-system one page at a time. Use buffer from kernel space
+     to prevent page-fault during file-system access. */
   int bytes_write = 0;
   for (unsigned i = 0; i < size; i += PGSIZE) 
     {
