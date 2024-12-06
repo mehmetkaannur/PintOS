@@ -191,8 +191,8 @@ get_page (const void *fault_addr, const void *esp, bool write)
               if (file_read (spte->file, frame, spte->page_read_bytes)
                   != (int) spte->page_read_bytes)
                 {
-                  lock_release (&t->io_lock);
                   lock_release (&filesys_lock);
+                  lock_release (&t->io_lock);
 
                   lock_acquire (&frame_table_lock);
                   free_frame (frame);

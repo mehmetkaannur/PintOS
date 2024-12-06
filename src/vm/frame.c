@@ -45,8 +45,8 @@ evict_frame (void)
   void *frame = NULL;
   bool shareable = false;
 
-  lock_acquire (&shared_pages_lock);
   lock_acquire (&frame_table_lock);
+  lock_acquire (&shared_pages_lock);
 
   /* Iterate frame table entries to find a frame to evict. */
   struct hash_iterator i;
