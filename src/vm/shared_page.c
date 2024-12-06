@@ -71,17 +71,17 @@ shared_pages_lookup (struct file *file, off_t offset)
 bool
 shared_pages_insert (struct file *file, off_t offset, void *frame)
 {
-	struct shared_page_entry *new_entry = malloc (sizeof (struct shared_page_entry));
-	if (new_entry == NULL)
+	struct shared_page_entry *spe = malloc (sizeof (struct shared_page_entry));
+	if (spe == NULL)
 		{
 			return false;
 		}
 
-	new_entry->file = file;
-	new_entry->offset = offset;
-	new_entry->frame = frame;
+	spe->file = file;
+	spe->offset = offset;
+	spe->frame = frame;
 
-	hash_insert (&shared_pages, &new_entry->hash_elem);
+	hash_insert (&shared_pages, &spe->hash_elem);
 	
 	return true;
 }
@@ -95,7 +95,9 @@ shared_pages_remove (struct file *file, off_t offset)
 	temp.offset = offset;
 
 	struct hash_elem *e = hash_find (&shared_pages, &temp.hash_elem);
-	struct shared_page_entry *entry = hash_entry (e, struct shared_page_entry, hash_elem);
+	struct shared_page_entry *entry = hash_entry (e,
+                                                struct shared_page_entry,
+                                                hash_elem);
 	hash_delete (&shared_pages, e);
 
 	free (entry);
