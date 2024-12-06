@@ -50,7 +50,7 @@ static void syscall_handler (struct intr_frame *);
 typedef void *(*syscall_func_t) (void *argv[], void *esp);
 
 static void validate_user_pointer (const void *uaddr, void *esp, bool write);
-static void validate_user_string (const char *uaddr, int max_len, void *esp,
+static bool validate_user_string (const char *uaddr, int max_len, void *esp,
                                   bool write);
 static void validate_user_data (const void *uaddr, unsigned size, void *esp,
                                 bool write);
@@ -138,8 +138,9 @@ validate_user_pointer (const void *uaddr, void *esp, bool write)
     }
 }
 
-/* Validate a string UADDR provided by user with max length MAX_LEN. */
-static void
+/* Validate a string UADDR provided by user with max length MAX_LEN.
+   Returns true if the string has length less than max_len. */
+static bool
 validate_user_string (const char *uaddr, int max_len, void *esp, bool write)
 {
   for (int i = 0; i < max_len; i++)
@@ -147,10 +148,10 @@ validate_user_string (const char *uaddr, int max_len, void *esp, bool write)
       validate_user_pointer (uaddr + i, esp, write);
       if (uaddr[i] == '\0')
         {
-          return;
+          return true;
         }
     }
-  thread_exit ();
+  return false;
 }
 
 /* Validates user data of given size. */
@@ -274,7 +275,10 @@ static pid_t
 sys_exec (void *argv[], void *esp)
 {
   const char *cmd_line = (const char *) argv[0];
-  validate_user_string (cmd_line, PGSIZE, esp, false);
+  if (!validate_user_string (cmd_line, PGSIZE, esp, false))
+    {
+      return SYS_ERROR;
+    }
   
   tid_t tid = process_execute (cmd_line);
 
@@ -316,7 +320,10 @@ sys_create (void *argv[], void *esp)
   unsigned initial_size = (unsigned) argv[1];
   
   /* Check if file name is valid. */
-  validate_user_data (file, READDIR_MAX_LEN, esp, false);
+  if (!validate_user_string (file, READDIR_MAX_LEN, esp, false))
+    {
+      return false;
+    }
   
   /* Create file in file system. */
   lock_acquire (&filesys_lock);
@@ -333,7 +340,10 @@ sys_remove (void *argv[], void *esp)
   const char *file = (const char *) argv[0];
 
   /* Check if file name is valid. */
-  validate_user_data (file, READDIR_MAX_LEN, esp, false);
+  if (!validate_user_string (file, READDIR_MAX_LEN, esp, false))
+    {
+      return false;
+    }
 
   /* Remove file from file system. */
   lock_acquire (&filesys_lock);
@@ -350,7 +360,10 @@ sys_open (void *argv[], void *esp)
   const char *file_name = (const char *) argv[0];
 
   /* Check if file name is valid. */
-  validate_user_string (file_name, READDIR_MAX_LEN, esp, false);
+  if (!validate_user_string (file_name, READDIR_MAX_LEN, esp, false))
+    {
+      return SYS_ERROR;
+    }
 
   /* Open file in file system. */
   lock_acquire (&filesys_lock);
