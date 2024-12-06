@@ -35,7 +35,6 @@ struct spt_entry
     /* The following fields may change after initialisation. */
     bool in_memory;               /* Indicates if page is in memory. */
     bool in_swap;                 /* Indicates if page is in swap space. */
-    bool is_pinned;               /* Indicates if page is pinned. */
     void *kpage;                  /* Kernel virtual page if in memory. */
     size_t swap_slot;             /* Swap slot if in swap space. */
   };
