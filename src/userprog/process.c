@@ -201,38 +201,40 @@ grow_stack (const void *uaddr)
     {
       thread_exit ();
     }
+
+  /* Add entry for page in supplemental page table. */
+  struct spt_entry *spte = malloc (sizeof (struct spt_entry));
+  if (spte == NULL)
+    {
+      thread_exit ();
+    }
+
+
+  spte->in_memory = true;
+  spte->is_pinned = false;
+  spte->user_page = pg_round_down (uaddr);
+  spte->page_type = STACK;
+  spte->in_swap = false;
+  spte->writable = true;
+  spte->kpage = frame;
+
+  lock_acquire (&frame_table_lock);
+  
+  lock_acquire (&cur->spt_lock);
+  hash_insert (&cur->supp_page_table, &spte->elem);         
+  lock_release (&cur->spt_lock);
   
   bool success = pagedir_set_page (cur->pagedir, pg_round_down (uaddr),
                                    frame, true);
   if (!success)
     {
-      lock_acquire (&frame_table_lock);
       free_frame (frame);
       lock_release (&frame_table_lock);
 
       thread_exit ();
     }
-  else
-    {
-      /* Add entry for page in supplemental page table. */
-      struct spt_entry *spte = malloc (sizeof (struct spt_entry));
-      if (spte == NULL)
-        {
-          thread_exit ();
-        }
-
-      spte->in_memory = true;
-      spte->is_pinned = false;
-      spte->user_page = pg_round_down (uaddr);
-      spte->page_type = STACK;
-      spte->in_swap = false;
-      spte->writable = true;
-      spte->kpage = frame;
-
-      lock_acquire (&cur->spt_lock);
-      hash_insert (&cur->supp_page_table, &spte->elem);         
-      lock_release (&cur->spt_lock);
-    }
+    
+  lock_release (&frame_table_lock);
 }
 
 /* Returns true iff UADDR is a potential stack page given
@@ -863,7 +865,9 @@ setup_stack (void **esp)
   if (kpage != NULL) 
     {
       void *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
+      lock_acquire (&frame_table_lock);
       success = install_page (upage, kpage, true);
+      lock_release (&frame_table_lock);
       if (success)
         {
           *esp = PHYS_BASE;
@@ -906,6 +910,7 @@ setup_stack (void **esp)
    UPAGE must not already be mapped.
    KPAGE should probably be a page obtained from the user pool
    with palloc_get_page().
+   Frame table lock must be held on entry to this function.
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
 static bool

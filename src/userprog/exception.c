@@ -220,6 +220,8 @@ get_page (const void *fault_addr, const void *esp, bool write)
         }
     }
 
+  lock_acquire (&frame_table_lock);
+
   /* Point page table entry for faulting address to frame. */
   bool success = pagedir_set_page (t->pagedir, spte->user_page,
                                    frame, spte->writable);
@@ -231,13 +233,11 @@ get_page (const void *fault_addr, const void *esp, bool write)
 
   if (!success)
     {
-      lock_acquire (&frame_table_lock);
       free_frame (frame);
-      lock_release (&frame_table_lock);
     }
   else
     {
-      lock_acquire (&t->spt_lock);
+      lock_acquire (&t->io_lock);
       if (swapped)
         {
           pagedir_set_dirty (t->pagedir, spte->user_page, true);
@@ -246,9 +246,11 @@ get_page (const void *fault_addr, const void *esp, bool write)
       /* Update supplemental page table entry. */
       spte->in_memory = true;
       spte->kpage = frame;
-      lock_release (&t->spt_lock);
+      lock_release (&t->io_lock);
     }
 
+  lock_release (&frame_table_lock);
+  
   return success;
 }
 

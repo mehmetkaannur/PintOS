@@ -99,6 +99,7 @@ lookup_page (uint32_t *pd, const void *vaddr, bool create)
    with palloc_get_page().
    If WRITABLE is true, the new page is read/write;
    otherwise it is read-only.
+   Must hold frame_table_lock on entry to function.
    Returns true if successful, false if memory allocation
    failed. */
 bool
@@ -128,7 +129,6 @@ pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
       fr->owner = thread_current ();
       
       /* Update frame references list for frame in frame table. */
-      lock_acquire (&frame_table_lock);
       struct frame_table_entry i;
       i.frame = kpage;
       struct hash_elem *e = hash_find (&frame_table, &i.hash_elem);
@@ -154,8 +154,6 @@ pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
         }
 
       list_push_back (&fte->frame_references, &fr->elem);
-
-      lock_release (&frame_table_lock);
 
       return true;
     }
