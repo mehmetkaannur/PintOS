@@ -37,13 +37,13 @@ static int sys_write (void *argv[], void *esp);
 static void sys_seek (void *argv[], void *esp UNUSED);
 static unsigned sys_tell (void *argv[], void *esp UNUSED);
 static void sys_close (void *argv[], void *esp UNUSED);
-static mapid_t sys_mmap (void *argv[], void *esp);
+static mapid_t sys_mmap (void *argv[], void *esp UNUSED);
 static void sys_munmap (void *argv[], void *esp UNUSED);
-static bool sys_chdir (void *argv[], void *esp UNUSED);
-static bool sys_mkdir (void *argv[], void *esp UNUSED);
-static bool sys_readdir (void *argv[], void *esp UNUSED);
-static bool sys_isdir (void *argv[], void *esp UNUSED);
-static int sys_inumber (void *argv[], void *esp UNUSED);
+static bool sys_chdir (void *argv[] UNUSED, void *esp UNUSED);
+static bool sys_mkdir (void *argv[] UNUSED, void *esp UNUSED);
+static bool sys_readdir (void *argv[] UNUSED, void *esp UNUSED);
+static bool sys_isdir (void *argv[] UNUSED, void *esp UNUSED);
+static int sys_inumber (void *argv[] UNUSED, void *esp UNUSED);
 
 static void syscall_handler (struct intr_frame *);
 
