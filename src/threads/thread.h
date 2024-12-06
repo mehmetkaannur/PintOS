@@ -134,6 +134,8 @@ struct thread
     struct hash mmap_table;             /* Hash table for memory-mapped
                                            files. */
     mapid_t next_mapid;                 /* Next available map ID. */
+    void *esp;                          /* Stack pointer for the user
+                                           program. */
 #endif
 
     /* Owned by thread.c. */
