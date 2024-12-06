@@ -55,8 +55,6 @@ static bool validate_user_string (const char *uaddr, int max_len, void *esp,
 static void validate_user_data (const void *uaddr, unsigned size, void *esp,
                                 bool write);
 
-static void handle_pinning (const void *uaddr, unsigned size, bool set_pinned);
-
 /* Entry with information on how to handle syscall. */
 struct syscall_info
   {
@@ -89,26 +87,6 @@ static struct syscall_info syscall_table[] = {
   [SYS_INUMBER] = { 1, true, (syscall_func_t) sys_inumber }
 };
 
-static void
-handle_pinning (const void *uaddr, unsigned size, bool set_pinned)
-{
-  uintptr_t ptr = (uintptr_t) uaddr;
-  const uintptr_t end = ptr + size;
-  uintptr_t page_boundary = (uintptr_t) pg_round_down (uaddr);
-  struct thread *t = thread_current ();
-
-  while (ptr < end)
-    {
-      struct spt_entry *spte = get_spt_entry ((void *) ptr, t);
-      if (spte != NULL)
-        {
-          spte->is_pinned = set_pinned;
-        }
-      page_boundary += PGSIZE;
-      ptr = page_boundary < end ? page_boundary : end;
-    }
-}
-
 /* Checks if the pointer given by the user is a valid pointer
    and terminates user process if not. */
 static void
@@ -122,14 +100,20 @@ validate_user_pointer (const void *uaddr, void *esp, bool write)
       thread_exit ();
     }
 
+  struct spt_entry entry;
+  entry.user_page = pg_round_down (uaddr);
+
+  struct hash_elem *e = hash_find (&t->supp_page_table, &entry.elem);
+
   /* Check if uaddr is unmapped virtual memory. */
   if (pagedir_get_page (t->pagedir, uaddr) == NULL)
     {
-      /* Try to load page in. */
-      if (!get_page (uaddr, esp, write))
+      if (e == NULL && !is_stack_access (uaddr, esp))
         {
           thread_exit ();
         }
+      
+      return;
     }
   
   if (write && !pagedir_is_writable (t->pagedir, uaddr))
@@ -421,9 +405,6 @@ sys_read (void *argv[], void *esp)
   void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
 
-  /* Pin frames. */
-  handle_pinning (buffer, size, true);
-
   /* Check if buffer is valid. */
   validate_user_data (buffer, size, esp, true);
 
@@ -444,13 +425,25 @@ sys_read (void *argv[], void *esp)
       return SYS_ERROR;
     }
   
-  /* Read from file. */
-  lock_acquire (&filesys_lock);
-  int bytes_read = file_read (file, buffer, size);
-  lock_release (&filesys_lock);
+  void *kbuffer = palloc_get_page (0);
+  if (kbuffer == NULL) 
+    {
+      return SYS_ERROR;
+    }
 
-  /* Unpin frames. */
-  handle_pinning (buffer, size, false);
+  int bytes_read = 0;
+  for (unsigned i = 0; i < size; i += PGSIZE) 
+    {
+      unsigned bytes = (size - i) < PGSIZE ? (size - i) : PGSIZE;
+
+      /* Read from file. */
+      lock_acquire (&filesys_lock);
+      bytes_read += file_read (file, kbuffer, bytes);
+      lock_release (&filesys_lock);
+
+      memcpy (buffer + i, kbuffer, bytes);
+    }
+  palloc_free_page (kbuffer);
 
   return bytes_read;
 }
@@ -463,9 +456,6 @@ sys_write (void *argv[], void *esp)
   const void *buffer = argv[1];
   unsigned size = (unsigned) argv[2];
 
-  /* Pin frames. */
-  handle_pinning (buffer, size, true);
-  
   /* Check if buffer is valid. */
   validate_user_data (buffer, size, esp, false);
 
@@ -489,13 +479,26 @@ sys_write (void *argv[], void *esp)
       return SYS_ERROR;
     }
 
-  /* Write to file. */
-  lock_acquire (&filesys_lock);
-  int bytes_write = file_write (file, buffer, size);
-  lock_release (&filesys_lock);
+  void *kbuffer = palloc_get_page (0);
 
-  /* Unpin frames. */
-  handle_pinning (buffer, size, false);
+  if (kbuffer == NULL) 
+    {
+      return SYS_ERROR;
+    }
+
+  int bytes_write = 0;
+  for (unsigned i = 0; i < size; i += PGSIZE) 
+    {
+      unsigned bytes = (size - i) < PGSIZE ? (size - i) : PGSIZE;
+
+      memcpy (kbuffer, buffer + i, bytes);
+
+      /* Write to file. */
+      lock_acquire (&filesys_lock);
+      bytes_write += file_write (file, kbuffer, bytes);
+      lock_release (&filesys_lock);
+    }
+  palloc_free_page (kbuffer);
 
   return bytes_write;
 }
@@ -643,7 +646,6 @@ sys_mmap (void *argv[], void *esp UNUSED)
       spte->page_zero_bytes = zero_bytes;
       spte->in_memory = false;
       spte->in_swap = false;
-      spte->is_pinned = false;
 
       lock_acquire (&t->spt_lock);
       hash_insert (&t->supp_page_table, &spte->elem);
