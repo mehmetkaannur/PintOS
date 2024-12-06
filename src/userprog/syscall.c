@@ -189,7 +189,8 @@ get_file_from_fd (int fd)
   return hash_entry (e, struct fd_file, hash_elem)->file;
 }
 
-/* Check if the new mapping overlaps existing mappings in virtual address space. */
+/* Returns true iff the new mapping overlaps existing mappings
+   in virtual address space for this user process. */
 static bool
 check_overlap (void *addr, size_t length)
 {
@@ -199,9 +200,11 @@ check_overlap (void *addr, size_t length)
 
   while (size > 0) 
     {
+      /* If there is an existing spt entry at upage, then the new mapping
+         overlaps with existing mappings. */
       if (get_spt_entry (upage, t) != NULL)
         {
-          return true; /* Overlaps with existing mapping */
+          return true;
         }
       upage += PGSIZE;
       size -= size > PGSIZE ? PGSIZE : size;
