@@ -726,8 +726,12 @@ sys_munmap (void *argv[])
       struct spt_entry *spte = get_spt_entry (upage, t);
       hash_delete (&t->supp_page_table, &spte->elem);
       void *frame = spte->kpage;
+      bool in_memory = spte->in_memory;
       destroy_spte (&spte->elem, NULL);
-      free_frame (frame);
+      if (in_memory)
+        {
+          free_frame (frame);
+        }
       
       offset += PGSIZE;
       length -= page_read_bytes;

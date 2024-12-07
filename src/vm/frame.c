@@ -232,8 +232,7 @@ get_frame (enum palloc_flags flags)
 }
 
 /* Free frame containing user page with kernel virtual address KPAGE,
-   if this frame is allocated in memory. Must hold frame_table_lock
-   on entry to this function. */
+   Must hold frame_table_lock on entry to this function. */
 void
 free_frame (void *kpage)
 {
@@ -242,13 +241,6 @@ free_frame (void *kpage)
 
   /* Find relevant frame table entry from frame table. */
   struct hash_elem *e = hash_find (&frame_table, &i.hash_elem);
-
-  /* If frame entry cannot be found in frame table, return. */
-  if (e == NULL)
-    {
-      return;
-    }
-  
   struct frame_table_entry *fte = hash_entry (e, struct frame_table_entry,
                                               hash_elem);
 
