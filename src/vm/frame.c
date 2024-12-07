@@ -244,9 +244,6 @@ free_frame (void *kpage)
   struct frame_table_entry *fte = hash_entry (e, struct frame_table_entry,
                                               hash_elem);
 
-  /* Remove frame table entry. */
-  hash_delete (&frame_table, e);
-
   struct thread *t = thread_current ();
   struct list_elem *el = list_begin (&fte->frame_references);
 
@@ -272,11 +269,11 @@ free_frame (void *kpage)
   /* If page is shared don't free frame. */
   if (shared)
     {
-      /* Put frame table entry back into frame table. */
-      hash_insert (&frame_table, &fte->hash_elem);
-
       return;
     }
+
+  /* Remove frame table entry. */
+  hash_delete (&frame_table, e);
 
   /* Free frame. */  
   palloc_free_page (kpage);
