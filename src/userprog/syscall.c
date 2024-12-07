@@ -181,7 +181,7 @@ check_overlap (void *addr, size_t length)
   while (size > 0) 
     {
       /* If there is an existing spt entry at upage, then the new mapping
-         overlaps with existing mappings. */
+         overlaps with an existing mapping. */
       if (get_spt_entry (upage, t) != NULL)
         {
           return true;
@@ -617,7 +617,7 @@ sys_mmap (void *argv[])
     }
 
   /* Ensure addr is not 0, is page aligned and does not overlap the space
-     reversed for the stack. */
+     reserved for the stack. */
   if (addr == 0
       || pg_ofs (addr) != 0
       || addr + length - 1 >= STACK_LIMIT) 
