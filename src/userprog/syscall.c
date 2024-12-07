@@ -94,28 +94,24 @@ validate_user_pointer (const void *uaddr, bool write)
 {
   struct thread *t = thread_current ();
   
-  /* Check for invalid uaddr. */
-  if (!is_user_vaddr (uaddr))
-    {
-      thread_exit ();
-    }
+  /* Attempt to find entry for page in spt. */
+  struct spt_entry entry;
+  entry.user_page = pg_round_down (uaddr);
+  struct hash_elem *e = hash_find (&t->supp_page_table, &entry.elem);
 
-  /* Check if uaddr is unmapped virtual memory. */
-  if (pagedir_get_page (t->pagedir, uaddr) == NULL)
+  if (e == NULL)
     {
-      struct spt_entry entry;
-      entry.user_page = pg_round_down (uaddr);
-
-      struct hash_elem *e = hash_find (&t->supp_page_table, &entry.elem);
-      if (e == NULL && !is_stack_access (uaddr, thread_current ()->esp))
+      /* Check for request to grow stack. */
+      if (!is_stack_access (uaddr, thread_current ()->esp))
         {
           thread_exit ();
         }
-      
       return;
     }
-  
-  if (write && !pagedir_is_writable (t->pagedir, uaddr))
+      
+  /* Check for write to read-only page. */
+  struct spt_entry *spte = hash_entry (e, struct spt_entry, elem);
+  if (write && !spte->writable)
     {
       thread_exit ();
     }
